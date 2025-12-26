@@ -95,17 +95,18 @@ type ReadWrite interface {
 // All buffers from AllocateBuffer or LoadBlock must be recycled via RecycleBuffer.
 type ReadOnly interface {
 	// LoadBlock reads a block and returns its content buffer.
-	// Equivalent to AllocateBuffer followed by ReadBlock.
-	// The returned buffer must be recycled via RecycleBuffer.
+	// Equivalent to AllocateBuffer followed by ReadBlock, but the returned buffer
+	// is read-only and must not be modified.
+	// The buffer must be recycled via RecycleBuffer when no longer needed.
 	LoadBlock(blockID BlockID) (buffer []byte, err error)
 
-	// AllocateBuffer allocates a buffer for block operations.
-	// The returned buffer must be recycled via RecycleBuffer.
+	// AllocateBuffer allocates a buffer for reading and writing blocks.
+	// The buffer must be recycled via RecycleBuffer when no longer needed.
 	AllocateBuffer() []byte
 
 	// ReadBlock reads a block using buffer.
 	// When reader is provided, access data via reader; otherwise data is copied to buffer.
-	// Data received by reader is only valid during callback execution.
+	// Data received by reader is read-only and only valid during callback execution.
 	ReadBlock(blockID BlockID, buffer []byte, reader func(block []byte)) error
 
 	// RecycleBuffer ends the lifecycle of a buffer from AllocateBuffer or LoadBlock.
