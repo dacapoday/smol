@@ -3,8 +3,41 @@ package bptree
 import (
 	"bytes"
 
+	"github.com/dacapoday/smol/iterator"
 	"github.com/dacapoday/smol/overflow"
 )
+
+func (bptree *BPTree[B, C]) Iterator() (iter Iterator[B, C]) {
+	iter.ator = new(ator[B, C])
+	if root := bptree.AcquireRoot(); root != nil {
+		iter.ator.Load(bptree.block, root)
+	}
+	return
+}
+
+type Iterator[B ReadOnly, C Checkpoint] struct {
+	*ator[B, C]
+}
+
+func (iter Iterator[B, C]) Clone() (newIter Iterator[B, C]) {
+	newIter.ator = new(ator[B, C])
+	if root := iter.ator.Root(); root != nil {
+		root.Checkpoint().Acquire()
+		newIter.ator.Clone(iter.ator)
+	}
+	return
+}
+
+func (iter Iterator[B, C]) Close() {
+	if root := iter.ator.Root(); root != nil {
+		root.Checkpoint().Release()
+		iter.ator.Close()
+	}
+}
+
+type ator[B ReadOnly, C Checkpoint] = Reader[B, *Root[C]]
+
+var _ iterator.Iterator = (*Reader[ReadOnly, RootBlock])(nil)
 
 func (reader *Reader[B, R]) Valid() bool {
 	return reader.err == null
