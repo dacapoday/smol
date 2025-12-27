@@ -2,6 +2,8 @@
 package smol
 
 import (
+	"errors"
+	"hash/crc32"
 	"io"
 )
 
@@ -114,3 +116,11 @@ type ReadOnly interface {
 	// Recycling the same buffer multiple times causes undefined behavior.
 	RecycleBuffer(buffer []byte)
 }
+
+var (
+	ErrInvalidOverflowHead = errors.New("invalid OverflowHead")
+	ErrInvalidOverflowPage = errors.New("invalid OverflowPage")
+	ErrAllocateFailed      = errors.New("allocate BlockID failed")
+)
+
+var CastagnoliCrcTable = crc32.MakeTable(crc32.Castagnoli)
