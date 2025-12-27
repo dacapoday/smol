@@ -14,6 +14,13 @@ type HeapCheckpoint = heap.Checkpoint
 
 type BlockID = heap.BlockID
 
+type HeapOption interface {
+	MagicCode() [4]byte
+	ReadOnly() bool
+	IgnoreInvalidFreelist() bool
+	RetainCheckpoints() uint8
+}
+
 func checksum(data []byte) uint32 {
 	return crc32.Checksum(data, smol.CastagnoliCrcTable)
 }

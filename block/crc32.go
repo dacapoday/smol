@@ -8,13 +8,6 @@ import (
 	"github.com/dacapoday/smol/internal/heap"
 )
 
-type CRC32HeapOption interface {
-	MagicCode() [4]byte
-	ReadOnly() bool
-	IgnoreInvalidFreelist() bool
-	RetainCheckpoints() uint8
-}
-
 // CRC32Heap implements the block interface with CRC32 checksum protection
 // for each block.
 type CRC32Heap[F File] struct {
@@ -27,7 +20,7 @@ func (block *CRC32Heap[F]) File() F {
 	return block.heap.File()
 }
 
-func (block *CRC32Heap[F]) Load(file F, opt CRC32HeapOption) (entry []byte, ckpt HeapCheckpoint, err error) {
+func (block *CRC32Heap[F]) Load(file F, opt HeapOption) (entry []byte, ckpt HeapCheckpoint, err error) {
 	meta, ckpt, err := block.heap.Load(file, opt)
 	if err != nil {
 		return

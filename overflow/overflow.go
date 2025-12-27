@@ -23,7 +23,7 @@ func Head(head []byte) (front []byte, overflowSize int, overflowID BlockID) {
 // Returns the complete data in body.
 func Read[B ReadOnly](block B, buf []byte, head []byte) (body []byte, err error) {
 	front, overflowSize, overflowID := Head(head)
-	if overflowSize <= 0 || overflowID < 2 {
+	if overflowID < 2 {
 		err = ErrInvalidOverflowHead
 		return
 	}
@@ -41,7 +41,7 @@ func Read[B ReadOnly](block B, buf []byte, head []byte) (body []byte, err error)
 	read := func(block []byte) {
 		page := Page(block)
 		if page.IsOverflowTail() {
-			buf = append(buf, page.OverflowTail()...)
+			body = append(buf, page.OverflowTail()...)
 			overflowID = 0
 			return
 		}
@@ -98,12 +98,13 @@ func Recycle[B ReadWrite](block B, head []byte) (err error) {
 // Write writes body to blocks and returns the encoded head.
 // The inlineSize parameter specifies how many bytes to keep in head; the rest overflows to blocks.
 func Write[B ReadWrite](block B, body []byte, inlineSize int) (head []byte, err error) {
+	// inlineSize = min(max(0, inlineSize), len(body))
 	front := body[:inlineSize]
 	rest := body[inlineSize:]
 	overflowSize := len(rest)
 	bodySize := block.PageSize() - HeadSize - 4
 	tailSize := overflowSize % bodySize
-	if tailSize <= 4 {
+	if tailSize <= 4 && overflowSize > tailSize {
 		tailSize += bodySize
 	}
 
