@@ -12,6 +12,8 @@ import (
 	"github.com/dacapoday/smol"
 )
 
+var castagnoliCrcTable = smol.CastagnoliCrcTable
+
 type BlockID = smol.BlockID
 type File = smol.File
 
@@ -528,5 +530,3 @@ func (heap *Heap[F]) commitFreelist(blockID BlockID) (err error) {
 	heap.free.tail.reset()
 	return
 }
-
-var castagnoliCrcTable = smol.CastagnoliCrcTable

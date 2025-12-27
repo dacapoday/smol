@@ -3,7 +3,12 @@ package heap
 import (
 	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 )
+
+func checksum(data []byte) uint32 {
+	return crc32.Checksum(data, castagnoliCrcTable)
+}
 
 func readEntry(read func([]byte) (int, error), entrySize int, rest []byte) (entry []byte, err error) {
 	entrySize += 4

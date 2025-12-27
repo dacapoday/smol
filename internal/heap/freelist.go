@@ -3,7 +3,6 @@ package heap
 import (
 	"encoding/binary"
 	"errors"
-	"hash/crc32"
 )
 
 type Freelist []byte
@@ -62,8 +61,4 @@ func (freelist Freelist) Count() uint16 {
 
 func (freelist Freelist) ID(index uint16) BlockID {
 	return binary.LittleEndian.Uint32(freelist[8+index*4:])
-}
-
-func checksum(data []byte) uint32 {
-	return crc32.Checksum(data, castagnoliCrcTable)
 }
