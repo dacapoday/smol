@@ -285,6 +285,16 @@ func InlineSize(pageSize, branchFactor, maxKeyOverflowSize, maxValOverflowSize i
 	return
 }
 
+func maxKeyInlineSize(pageSize int) int {
+	keyOverflowHeadSize := (pageSize-HeadSize)/2 - 2 - 4 // -2 for offset, -4 for BranchID
+	return keyOverflowHeadSize - 1 - 4                   // -4 for OverflowID
+}
+
+func maxValInlineSize(pageSize int, keyInlineSize int) int {
+	keyOverflowHeadSize := 1 + 4 + keyInlineSize
+	return pageSize - HeadSize - 2 - sizeUvarint(keyOverflowHeadSize) - keyOverflowHeadSize - 1 - 4
+}
+
 func sizeUvarint(x int) (size int) {
 	switch {
 	case x < 128: // 1<<7

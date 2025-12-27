@@ -8,11 +8,9 @@ import (
 	"github.com/dacapoday/smol/internal/heap"
 )
 
-type File = heap.File
-
+type File = smol.File
+type BlockID = smol.BlockID
 type HeapCheckpoint = heap.Checkpoint
-
-type BlockID = heap.BlockID
 
 type HeapOption interface {
 	MagicCode() [4]byte

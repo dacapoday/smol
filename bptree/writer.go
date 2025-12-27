@@ -26,10 +26,11 @@ func WriteSortedChanges[B ReadWrite, R RootBlock](block B, root R, sortedChanges
 			} else if pageSize > 65536 {
 				panic(errors.New("pageSize > 65536"))
 			} else {
-				maxKeyInlineSize, maxValInlineSize := InlineSize(pageSize, 2, 0, 0)
+				maxKeyInlineSize := maxKeyInlineSize(pageSize)
 				if writer.keyInlineSize > maxKeyInlineSize {
 					panic(errors.New("keyInlineSize > maxKeyInlineSize"))
 				}
+				maxValInlineSize := maxValInlineSize(pageSize, writer.keyInlineSize)
 				if writer.valInlineSize > maxValInlineSize {
 					panic(errors.New("valInlineSize > maxValInlineSize"))
 				}
