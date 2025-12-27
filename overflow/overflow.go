@@ -139,10 +139,10 @@ func Write[B ReadWrite](block B, body []byte, inlineSize int) (head []byte, err 
 		}
 	}
 
-	head = make([]byte, 0, sizeUvarint(overflowSize)+4+len(front))
-	head = binary.AppendUvarint(head, uint64(overflowSize))
-	head = binary.LittleEndian.AppendUint32(head, overflowID)
-	head = append(head, front...)
+	head = make([]byte, sizeUvarint(overflowSize)+4+len(front))
+	n := binary.PutUvarint(head, uint64(overflowSize))
+	binary.LittleEndian.PutUint32(head[n:], overflowID)
+	copy(head[n+4:], front)
 	return
 }
 
