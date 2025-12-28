@@ -1,3 +1,6 @@
+// Copyright 2025 dacapoday
+// SPDX-License-Identifier: Apache-2.0
+
 package bptree
 
 // Level represents a path from root to leaf in the B+ tree, defining the cursor

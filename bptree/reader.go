@@ -1,3 +1,6 @@
+// Copyright 2025 dacapoday
+// SPDX-License-Identifier: Apache-2.0
+
 package bptree
 
 // Reader provides cursor-based traversal of B+ tree items.

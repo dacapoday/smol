@@ -1,3 +1,6 @@
+// Copyright 2025 dacapoday
+// SPDX-License-Identifier: Apache-2.0
+
 // Package bptree implements a copy on write B+ tree data structure.
 package bptree
 

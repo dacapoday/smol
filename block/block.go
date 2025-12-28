@@ -1,3 +1,6 @@
+// Copyright 2025 dacapoday
+// SPDX-License-Identifier: Apache-2.0
+
 // Package block provides implementations of block interfaces.
 package block
 
