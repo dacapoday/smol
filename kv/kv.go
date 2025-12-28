@@ -5,6 +5,7 @@ import (
 
 	"github.com/dacapoday/smol/block"
 	"github.com/dacapoday/smol/bptree"
+	"github.com/dacapoday/smol/btree"
 )
 
 type DB = KV[*os.File]
@@ -34,7 +35,7 @@ func (kv *KV[F]) File() F {
 }
 
 func (kv *KV[F]) Load(file F) (err error) {
-	entry, ckpt, err := kv.block.Load(file, opt{})
+	entry, ckpt, err := kv.block.Load(file, BlockOption{})
 	if err != nil {
 		return
 	}
@@ -43,25 +44,25 @@ func (kv *KV[F]) Load(file F) (err error) {
 	return
 }
 
-type opt struct{}
+type BlockOption struct{}
 
-func (o opt) MagicCode() [4]byte {
+func (o BlockOption) MagicCode() [4]byte {
 	return [4]byte{'D', 'I', 'C', 'T'}
 }
 
-func (o opt) ReadOnly() bool {
+func (o BlockOption) ReadOnly() bool {
 	return false
 }
 
-func (o opt) IgnoreInvalidFreelist() bool {
+func (o BlockOption) IgnoreInvalidFreelist() bool {
 	return false
 }
 
-func (o opt) RetainCheckpoints() uint8 {
+func (o BlockOption) RetainCheckpoints() uint8 {
 	return 0
 }
 
-func (o opt) BlockSize() int {
+func (o BlockOption) BlockSize() int {
 	return 1 << 14
 }
 
@@ -77,6 +78,10 @@ func (kv *KV[F]) Set(key []byte, val []byte) (err error) {
 	return kv.bptree.Set(key, val)
 }
 
-func (kv *KV[F]) Batch(sortedChanges func(yield func([]byte, []byte) bool)) error {
-	return kv.bptree.WriteSortedChanges(sortedChanges, 4096)
+func (kv *KV[F]) Batch(changes func(yield func([]byte, []byte) bool)) error {
+	var batch btree.BTree
+	for k, v := range changes {
+		batch.Set(k, v)
+	}
+	return kv.bptree.CommitSortedChanges(batch.Items, 4096)
 }

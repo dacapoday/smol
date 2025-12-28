@@ -7,7 +7,16 @@ import (
 	"github.com/dacapoday/smol/overflow"
 )
 
-func WriteSortedChanges[B ReadWrite, R RootBlock](block B, root R, sortedChanges func(func([]byte, []byte) bool), maxPages uint32) (high uint8, rootPage Page, err error) {
+// WriteSortedChanges applies a batch of changes to the copy-on-write B+ tree.
+// It returns a new root page and tree height without modifying the original tree.
+//
+// sortedChanges must yield key-value pairs in ascending lexicographic order.
+// A nil value indicates deletion of the key. All yielded keys and values must
+// remain valid until the function returns, not just during iteration.
+//
+// maxLoadedPages limits the number of pages loaded at once. When hit, changes are
+// split into batches to control memory use.
+func WriteSortedChanges[B ReadWrite, R RootBlock](block B, root R, sortedChanges func(func([]byte, []byte) bool), maxLoadedPages uint32) (high uint8, rootPage Page, err error) {
 	writer := itemWriter[B]{block: block}
 	writer.keyInlineSize = root.KeyInlineSize()
 	writer.valInlineSize = root.ValInlineSize()
@@ -62,7 +71,7 @@ func WriteSortedChanges[B ReadWrite, R RootBlock](block B, root R, sortedChanges
 				return 0, nil, writer.err
 			}
 			if !writer.last && writer.index == writer.list.tail.page.tail.end {
-				if writer.loaded() > maxPages {
+				if writer.loaded() > maxLoadedPages {
 					writer.flush()
 					if writer.err != nil {
 						return 0, nil, writer.err
@@ -138,7 +147,7 @@ func (writer *itemWriter[B]) flush() {
 		return
 	}
 
-	clear(writer.pages)
+	recyclePages(writer.block, writer.pages)
 	writer.list.head.next = nil
 	writer.list.tail = writer.list.head
 	writer.tail = nil

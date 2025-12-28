@@ -5,6 +5,8 @@ import (
 	"math/rand/v2"
 )
 
+// High calculates the height of a B+ tree by traversing from the root page to a leaf.
+// Returns 0 for a root-only tree (single leaf page).
 func High[B ReadOnly](block B, root Page) (high uint8, err error) {
 	var buffer []byte
 	var blockID BlockID

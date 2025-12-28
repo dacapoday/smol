@@ -1,5 +1,6 @@
 package bptree
 
+// Reader provides cursor-based traversal of B+ tree items.
 type Reader[B ReadOnly, R RootBlock] struct {
 	block    B
 	root     R
@@ -37,7 +38,7 @@ func (reader *Reader[B, R]) Load(block B, root R) {
 	reader.index = 0
 }
 
-func (dst *Reader[B, R]) Clone(src *Reader[B, R]) {
+func (dst *Reader[B, R]) LoadFrom(src *Reader[B, R]) {
 	dst.block = src.block
 	dst.root = src.root
 	dst.err = src.err
@@ -84,6 +85,8 @@ func (reader *Reader[B, R]) Close() {
 	reader.root = nilRoot
 }
 
+// Level returns a copy of the current path from root to leaf, representing the
+// cursor position in the tree.
 func (reader *Reader[B, R]) Level() Level {
 	return append(Level(nil), reader.level...)
 }

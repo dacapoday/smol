@@ -7,6 +7,8 @@ import (
 	"github.com/dacapoday/smol/overflow"
 )
 
+// Iterator creates a new iterator over the B+ tree.
+// The iterator holds a snapshot and must be closed when done.
 func (bptree *BPTree[B, C]) Iterator() (iter Iterator[B, C]) {
 	iter.ator = new(ator[B, C])
 	if root := bptree.AcquireRoot(); root != nil {
@@ -15,15 +17,20 @@ func (bptree *BPTree[B, C]) Iterator() (iter Iterator[B, C]) {
 	return
 }
 
+// Iterator provides ordered iteration over B+ tree entries with snapshot isolation.
+// It embeds Reader and implements the iterator.Iterator interface.
 type Iterator[B ReadOnly, C Checkpoint] struct {
 	*ator[B, C]
 }
 
+type ator[B ReadOnly, C Checkpoint] = Reader[B, *Root[C]]
+
+// Clone creates a new iterator with the same position as the current one.
 func (iter Iterator[B, C]) Clone() (newIter Iterator[B, C]) {
 	newIter.ator = new(ator[B, C])
 	if root := iter.ator.Root(); root != nil {
 		root.Checkpoint().Acquire()
-		newIter.ator.Clone(iter.ator)
+		newIter.ator.LoadFrom(iter.ator)
 	}
 	return
 }
@@ -34,8 +41,6 @@ func (iter Iterator[B, C]) Close() {
 		iter.ator.Close()
 	}
 }
-
-type ator[B ReadOnly, C Checkpoint] = Reader[B, *Root[C]]
 
 var _ iterator.Iterator = (*Reader[ReadOnly, RootBlock])(nil)
 

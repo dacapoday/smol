@@ -1,5 +1,18 @@
 package bptree
 
+// Level represents a path from root to leaf in the B+ tree, defining the cursor
+// position within the tree.
+//
+// The slice contains branch pages only: level[0] is root, level[1] is the first
+// branch below root, down to level[len-1] at the deepest branch.
+//
+// Each element contains:
+//   - BlockID: block ID of the page at this level
+//   - Count:   total entries in this page
+//   - Index:   child index pointing to the next level
+//
+// Note: level[0].BlockID stores the leaf page's block ID, since the root page has
+// no block ID (it's embedded in the tree metadata).
 type Level []struct {
 	BlockID BlockID
 	Count   uint16

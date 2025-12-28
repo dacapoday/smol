@@ -1,3 +1,4 @@
+// Package bptree implements a copy on write B+ tree data structure.
 package bptree
 
 import (
@@ -6,6 +7,13 @@ import (
 	"sync"
 )
 
+// BPTree is the default container implementation for the copy-on-write B+ tree.
+// It provides thread-safe operations with MVCC snapshot isolation.
+//
+// Keys and values can be arbitrarily large until block storage is exhausted. However,
+// for best performance, keep them within the inline size limits obtained from
+// root.KeyInlineSize() and root.ValInlineSize(). Larger entries trigger overflow
+// storage with additional I/O overhead.
 type BPTree[B Block[C], C Checkpoint] struct {
 	block B
 	root  *Root[C]
@@ -52,6 +60,8 @@ func (bptree *BPTree[B, C]) Close() (err error) {
 	return
 }
 
+// Get retrieves the value for the given key. Returns nil if the key does not exist.
+// The returned value is an independent copy and safe to modify.
 func (bptree *BPTree[B, C]) Get(key []byte) (val []byte, err error) {
 	root := bptree.AcquireRoot()
 	if root == nil {
@@ -60,14 +70,24 @@ func (bptree *BPTree[B, C]) Get(key []byte) (val []byte, err error) {
 	}
 	defer root.Checkpoint().Release()
 
-	return Get(bptree.block, root, key, nil)
+	return Get(bptree.block, root, nil, key)
 }
 
+// Set inserts or updates a key-value pair in the B+ tree.
+// To delete a key, pass nil as the value.
 func (bptree *BPTree[B, C]) Set(key []byte, val []byte) (err error) {
-	return bptree.WriteSortedChanges(func(yield func([]byte, []byte) bool) { yield(key, val) }, math.MaxUint32)
+	return bptree.CommitSortedChanges(func(yield func([]byte, []byte) bool) { yield(key, val) }, math.MaxUint32)
 }
 
-func (bptree *BPTree[B, C]) WriteSortedChanges(sortedChanges func(func([]byte, []byte) bool), maxPages uint32) (err error) {
+// CommitSortedChanges atomically writes a batch of sorted changes, creating a new
+// tree version without modifying the original.
+//
+// sortedChanges must yield key-value pairs in ascending lexicographic order.
+// A nil value indicates deletion of the key. All yielded keys and values must
+// remain valid until the method returns, not just during iteration.
+//
+// maxLoadedPages limits pages loaded at once to control memory use.
+func (bptree *BPTree[B, C]) CommitSortedChanges(sortedChanges func(func([]byte, []byte) bool), maxLoadedPages uint32) (err error) {
 	bptree.mutex.Lock()
 	defer bptree.mutex.Unlock()
 
@@ -76,7 +96,7 @@ func (bptree *BPTree[B, C]) WriteSortedChanges(sortedChanges func(func([]byte, [
 		return ErrClosed
 	}
 
-	high, page, err := WriteSortedChanges(bptree.block, oldRoot, sortedChanges, maxPages)
+	high, page, err := WriteSortedChanges(bptree.block, oldRoot, sortedChanges, maxLoadedPages)
 	if err != nil {
 		bptree.block.Rollback()
 		return
@@ -102,6 +122,8 @@ func (bptree *BPTree[B, C]) WriteSortedChanges(sortedChanges func(func([]byte, [
 	return
 }
 
+// AcquireRoot returns a snapshot of the current root with an acquired reference.
+// The caller must call Release on the checkpoint when done.
 func (bptree *BPTree[B, C]) AcquireRoot() (root *Root[C]) {
 	bptree.view.RLock()
 	if root = bptree.root; root != nil {
@@ -111,6 +133,8 @@ func (bptree *BPTree[B, C]) AcquireRoot() (root *Root[C]) {
 	return
 }
 
+// Root represents a snapshot of the B+ tree root metadata.
+// It contains the checkpoint, root page, and inline size configuration.
 type Root[C Checkpoint] struct {
 	ckpt C
 	page Page
@@ -148,24 +172,29 @@ func loadRoot[B Block[C], C Checkpoint](block B, entry []byte, ckpt C) (*Root[C]
 	return root, nil
 }
 
+// Checkpoint returns the checkpoint associated with this root snapshot.
 func (root *Root[C]) Checkpoint() C {
 	return root.ckpt
 }
 
 var _ RootBlock = (*Root[Checkpoint])(nil)
 
+// High returns the tree height (0 for root-only tree).
 func (root *Root[C]) High() uint8 {
 	return root.high
 }
 
+// Page returns the root page of the tree.
 func (root *Root[C]) Page() Page {
 	return root.page
 }
 
+// KeyInlineSize returns the maximum inline key size stored in pages.
 func (root *Root[C]) KeyInlineSize() int {
 	return int(root.klen)
 }
 
+// ValInlineSize returns the maximum inline value size stored in pages.
 func (root *Root[C]) ValInlineSize() int {
 	return int(root.vlen)
 }
