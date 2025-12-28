@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const order = 6
+const order = 6 // min: 2
 const half = (order + 1) / 2
 const double = 2*order + 1
 

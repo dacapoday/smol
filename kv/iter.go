@@ -9,21 +9,35 @@ import (
 	"github.com/dacapoday/smol/iterator"
 )
 
+// Iterator extends the standard iterator.Iterator interface with Clone and Close.
+// Iterators represent an immutable snapshot of the key-value store at the time
+// of creation, providing consistent reads even as the store is modified.
 type Iterator[Iter iterator.Iterator] interface {
 	iterator.Iterator
+	// Clone creates an independent copy of this iterator at the same position.
+	// The clone shares the same snapshot but maintains separate position state.
 	Clone() Iter
+	// Close releases resources held by this iterator.
+	// The snapshot reference is released, allowing garbage collection.
 	Close()
 }
 
+// DBIter is a specialized iterator for file-based KV stores.
 type DBIter = Iter[*os.File]
 
 var _ Iterator[DBIter] = DBIter{}
 
+// Iter creates a new iterator over the key-value store.
+// The iterator captures a consistent snapshot at the current moment.
+// The caller must call Close when done to release resources.
 func (kv *KV[F]) Iter() (iter Iter[F]) {
 	iter.ator = kv.bptree.Iterator()
 	return
 }
 
+// Iter is an iterator over a KV store snapshot.
+// It wraps the underlying B+ tree iterator, providing navigation
+// over sorted key-value pairs.
 type Iter[F File] struct {
 	ator bptree.Iterator[*block.CRC32Heap[F], block.HeapCheckpoint]
 }
@@ -73,6 +87,9 @@ func (iter Iter[F]) Seek(key []byte) bool {
 	return iter.ator.Seek(key)
 }
 
+// Iter creates a new iterator over the transaction's view of the data.
+// This combines pending uncommitted changes with the base snapshot,
+// providing a consistent view of what will be committed.
 func (tx *Tx[Iter]) Iter() (iter TxIter[Iter]) {
 	iter.ator = new(iterator.Combine[btree.Iter, Iter])
 	iter.ator.Load(tx.pending.Iter(), tx.snapshot.Clone(), nil)
@@ -81,6 +98,9 @@ func (tx *Tx[Iter]) Iter() (iter TxIter[Iter]) {
 
 var _ Iterator[TxIter[DBIter]] = TxIter[DBIter]{}
 
+// TxIter is an iterator over a transaction's view of the data.
+// It merges the transaction's pending changes with the base snapshot,
+// showing the combined result as it would appear after commit.
 type TxIter[Iter Iterator[Iter]] struct {
 	ator *iterator.Combine[btree.Iter, Iter]
 }
