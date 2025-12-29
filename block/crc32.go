@@ -11,8 +11,7 @@ import (
 	"github.com/dacapoday/smol/internal/heap"
 )
 
-// CRC32Heap implements the block interface with CRC32 checksum protection
-// for each block.
+// CRC32Heap implements Block with CRC32 checksum protection per block.
 type CRC32Heap[F File] struct {
 	pool sync.Pool
 	heap heap.Heap[F]

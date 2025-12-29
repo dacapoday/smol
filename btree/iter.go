@@ -1,7 +1,7 @@
 package btree
 
-// Iter creates an iterator that stays synchronized with the BTree (not a snapshot).
-// Call SeekFirst, SeekLast, or Seek to position it before use.
+// Iter creates an iterator synchronized with the BTree (not a snapshot).
+// Call SeekFirst, SeekLast, or Seek to position before use.
 func (btree *BTree) Iter() Iter {
 	return &iter{
 		root:    btree,
@@ -12,8 +12,9 @@ func (btree *BTree) Iter() Iter {
 	}
 }
 
-// Iter is an iterator over BTree. Do not compare with nil or rely on pointer semantics.
-// The implementation may change (e.g., to a struct wrapping a pointer).
+// Iter is an iterator over BTree.
+//
+// Warning: Do not compare with nil or rely on pointer semantics.
 type Iter = *iter
 
 type iter struct {
@@ -29,7 +30,7 @@ type cursor = struct {
 	index int
 }
 
-// Clone creates an independent copy of the iterator at its current position.
+// Clone creates an independent copy at current position.
 func (it Iter) Clone() Iter {
 	return &iter{
 		root:    it.root,
@@ -52,7 +53,7 @@ func (it Iter) sync() bool {
 	return it.seek(it.key)
 }
 
-// Valid returns true if positioned at a valid key-value pair.
+// Valid returns true if positioned at a valid item.
 func (it Iter) Valid() bool {
 	if it.version != it.root.version {
 		return it.sync()
@@ -96,7 +97,7 @@ func (it Iter) Val() []byte {
 	return s2b(cursor.node.val(cursor.index))
 }
 
-// Next advances to the next key. Returns false if no more items.
+// Next advances to the next item. Returns false if no more items.
 func (it Iter) Next() bool {
 	if it.version != it.root.version {
 		if !it.sync() {
@@ -158,7 +159,7 @@ func (it Iter) Next() bool {
 	}
 }
 
-// Prev moves to the previous key. Returns false if no more items.
+// Prev moves to the previous item. Returns false if no more items.
 func (it Iter) Prev() bool {
 	if it.version != it.root.version {
 		if !it.sync() {
@@ -286,7 +287,7 @@ func (it Iter) SeekLast() bool {
 	return true
 }
 
-// Seek positions the iterator at the first key >= the given key.
+// Seek positions at the first key >= the given key.
 // Returns false if no such key exists.
 func (it Iter) Seek(key []byte) bool {
 	if len(it.root.items) == 0 {

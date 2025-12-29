@@ -1,11 +1,11 @@
-// Package overflow provides a method for reading and writing arbitrary-length data
-// on top of fixed-size blocks. It uses a singly-linked list to chain multiple overflow
-// pages when data exceeds a single block's capacity.
+// Package overflow implements arbitrary-length data storage on fixed-size blocks.
+// Uses a singly-linked list to chain overflow pages when data exceeds block capacity.
 package overflow
 
 import "encoding/binary"
 
-// Head decodes the overflow header and returns the data head, size of data overflowed to other blocks, and next block ID.
+// Head decodes the overflow header.
+// Returns data head, overflow size, and next block ID.
 func Head(head []byte) (front []byte, overflowSize int, overflowID BlockID) {
 	size, slen := binary.Uvarint(head)
 	if slen <= 0 {
@@ -17,10 +17,9 @@ func Head(head []byte) (front []byte, overflowSize int, overflowID BlockID) {
 	return
 }
 
-// Read reads the complete data from block by head.
-// If buf has enough capacity, it will be reused;
-// otherwise, a new buffer will be allocated.
-// Returns the complete data in body.
+// Read reads complete data from block using head.
+// Reuses buf if it has enough capacity; otherwise allocates new buffer.
+// Returns complete data in body.
 func Read[B ReadOnly](block B, buf []byte, head []byte) (body []byte, err error) {
 	front, overflowSize, overflowID := Head(head)
 	if overflowID < 2 {
@@ -63,7 +62,7 @@ func Read[B ReadOnly](block B, buf []byte, head []byte) (body []byte, err error)
 	}
 }
 
-// Recycle frees the overflow blocks by head.
+// Recycle frees overflow blocks using head.
 func Recycle[B ReadWrite](block B, head []byte) (err error) {
 	_, _, overflowID := Head(head)
 

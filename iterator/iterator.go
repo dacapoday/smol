@@ -1,3 +1,9 @@
+// Package iterator provides interfaces and utilities for traversing sorted key-value datasets.
+//
+// Features:
+//   - Iterator interface: bidirectional cursor over sorted key-value pairs
+//   - Merge: combines two sorted iterators with overlay semantics (LSM-tree style)
+//   - Combine: extends Merge to filter out tombstone entries (nil values)
 package iterator
 
 // Iterator represents a cursor over a sorted key-value dataset.

@@ -1,3 +1,4 @@
+// Package mem implements in-memory File storage for testing and ephemeral data.
 package mem
 
 import (

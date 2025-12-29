@@ -7,10 +7,8 @@ import (
 	"io"
 )
 
-// File provides access to a storage backend for the key-value database.
-// The File interface is the minimum implementation required.
-//
-// The *os.File type satisfies this interface.
+// File provides access to a storage backend.
+// *os.File satisfies this interface.
 type File interface {
 	io.ReaderAt
 	io.WriterAt
@@ -19,32 +17,30 @@ type File interface {
 	// Truncate changes the size of the file.
 	Truncate(size int64) error
 
-	// Sync commits the current contents of the file to stable storage.
-	// Typically, this means flushing the file system's in-memory copy
-	// of recently written data to disk.
+	// Sync commits file contents to stable storage.
 	Sync() error
 }
 
 // Block divides storage into fixed-size blocks indexed by BlockID.
-// Requires copy-on-write data structures to work with Commit and Rollback.
+// Requires copy-on-write data structures for Commit and Rollback.
 type Block[C Checkpoint] interface {
-	// Close releases the underlying storage.
-	// Uncommitted changes are discarded.
+	// Close releases the underlying storage and discards uncommitted changes.
 	// All Checkpoints must be released before Close.
-	// Accessing Block after Close causes undefined behavior.
 	Close() error
 
 	// Rollback discards all uncommitted changes.
 	Rollback() error
 
-	// Commit persists all changes atomically and returns a Checkpoint.
-	// The entry is metadata persisted with the commit.
+	// Commit atomically persists all changes and returns a Checkpoint.
+	// Entry is metadata persisted with the commit.
+	//
+	// Warning: Entry size must not exceed PageSize().
 	Commit(entry []byte) (C, error)
 
 	ReadWrite
 }
 
-// Checkpoint is reference to commit snapshot.
+// Checkpoint is a reference to a commit snapshot.
 type Checkpoint interface {
 	// Acquire increments the reference count.
 	Acquire()
@@ -53,24 +49,23 @@ type Checkpoint interface {
 	Release()
 }
 
-// BlockID identifies a block, starting from 2(0 and 1 are reserved).
+// BlockID identifies a block, starting from 2 (0 and 1 are reserved).
 type BlockID = uint32
 
-// ReadWrite provides a set of methods for reading and writing blocks.
-// It embeds ReadOnly and extends it with write operations and block allocation.
+// ReadWrite provides methods for reading and writing blocks.
+// Embeds ReadOnly and extends it with write operations.
 type ReadWrite interface {
 	ReadOnly
 
-	// PageSize returns the readable and writable range within a block.
-	// Buffer read and write operations must stay within PageSize bytes.
+	// PageSize returns usable bytes within a block.
 	PageSize() int
 
 	// AllocateBlock allocates a new block and returns its BlockID.
-	// Blocks allocated by AllocateBlock should be recycled via RecycleBlock when no longer needed.
+	// Recycle via RecycleBlock when no longer needed.
 	//
-	// Error Detection:
-	// Check that returned BlockID > 1, otherwise an error has occurred.
-	// Implementations may optionally provide Error() error method to return the error details.
+	// Error detection: If BlockID < 2, an error occurred.
+	// Call Error() method if available for error details.
+
 	//
 	// Example:
 	//   blockID := block.AllocateBlock()
@@ -82,38 +77,37 @@ type ReadWrite interface {
 	//   }
 	AllocateBlock() BlockID
 
-	// RecycleBlock marks a BlockID as no longer needed, paired with AllocateBlock.
+	// RecycleBlock marks a BlockID as no longer needed.
 	// Recycling the same BlockID multiple times causes undefined behavior.
 	RecycleBlock(BlockID)
 
 	// WriteBlock writes buffer to storage at blockID.
-	// Like io.WriterAt, but buffer may be modified after return (e.g., encryption).
-	// Do not rely on buffer content after writing.
+	//
+	// Warning: Caller must not rely on buffer content after writing as it may be modified.
 	WriteBlock(blockID BlockID, buffer []byte) error
 }
 
 // ReadOnly is a subset of Block interface for reading blocks.
-// Provides buffer for block reading operations.
-// All buffers from AllocateBuffer or LoadBlock must be recycled via RecycleBuffer.
+//
+// Important: All buffers from AllocateBuffer or LoadBlock must be recycled via RecycleBuffer.
 type ReadOnly interface {
-	// LoadBlock reads a block and returns its content buffer.
-	// Equivalent to AllocateBuffer followed by ReadBlock, but the returned buffer
-	// is read-only and must not be modified.
-	// The buffer must be recycled via RecycleBuffer when no longer needed.
+	// LoadBlock reads a block and returns its content.
+	// Returned buffer is read-only. Recycle via RecycleBuffer.
 	LoadBlock(blockID BlockID) (buffer []byte, err error)
 
 	// AllocateBuffer allocates a buffer for reading and writing blocks.
-	// The buffer must be recycled via RecycleBuffer when no longer needed.
+	// Recycle via RecycleBuffer when done.
 	AllocateBuffer() []byte
 
 	// ReadBlock reads a block using buffer.
-	// When reader is provided, access data via reader; otherwise data is copied to buffer.
-	// Data received by reader is read-only and only valid during callback execution.
+	// If reader is provided, access data via reader; otherwise data is copied to buffer.
+	//
+	// Important: Buffer parameter is required even when reader is provided.
 	ReadBlock(blockID BlockID, buffer []byte, reader func(block []byte)) error
 
-	// RecycleBuffer ends the lifecycle of a buffer from AllocateBuffer or LoadBlock.
-	// After recycling, do not hold references to the buffer or reuse it.
-	// Recycling the same buffer multiple times causes undefined behavior.
+	// RecycleBuffer releases a buffer from AllocateBuffer or LoadBlock.
+	//
+	// Warning: Caller must not use buffer after recycling.
 	RecycleBuffer(buffer []byte)
 }
 

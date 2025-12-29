@@ -1,7 +1,7 @@
 // Copyright 2025 dacapoday
 // SPDX-License-Identifier: Apache-2.0
 
-// Package bptree implements a copy on write B+ tree data structure.
+// Package bptree implements a copy-on-write B+ tree with MVCC snapshot isolation.
 package bptree
 
 import (
@@ -11,12 +11,10 @@ import (
 )
 
 // BPTree is the default container implementation for the copy-on-write B+ tree.
-// It provides thread-safe operations with MVCC snapshot isolation.
 //
-// Keys and values can be arbitrarily large until block storage is exhausted. However,
-// for best performance, keep them within the inline size limits obtained from
-// root.KeyInlineSize() and root.ValInlineSize(). Larger entries trigger overflow
-// storage with additional I/O overhead.
+// Keys and values can be arbitrarily large.
+// For best performance, keep them within inline size limits from
+// root.KeyInlineSize() and root.ValInlineSize(). Larger entries use overflow storage.
 type BPTree[B Block[C], C Checkpoint] struct {
 	block B
 	root  *Root[C]
@@ -63,8 +61,9 @@ func (bptree *BPTree[B, C]) Close() (err error) {
 	return
 }
 
-// Get retrieves the value for the given key. Returns nil if the key does not exist.
-// The returned value is an independent copy and safe to modify.
+// Get retrieves the value for the given key.
+// Returns nil if key does not exist.
+// Returned value is safe to modify.
 func (bptree *BPTree[B, C]) Get(key []byte) (val []byte, err error) {
 	root := bptree.AcquireRoot()
 	if root == nil {
@@ -76,8 +75,8 @@ func (bptree *BPTree[B, C]) Get(key []byte) (val []byte, err error) {
 	return Get(bptree.block, root, nil, key)
 }
 
-// Set inserts or updates a key-value pair in the B+ tree.
-// To delete a key, pass nil as the value.
+// Set inserts or updates a key-value pair.
+// Pass nil value to delete a key.
 func (bptree *BPTree[B, C]) Set(key []byte, val []byte) (err error) {
 	return bptree.CommitSortedChanges(func(yield func([]byte, []byte) bool) { yield(key, val) }, math.MaxUint32)
 }

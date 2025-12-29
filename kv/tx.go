@@ -7,29 +7,25 @@ import (
 	"github.com/dacapoday/smol/btree"
 )
 
-// Begin starts a new transaction with Read Committed isolation level.
-// The transaction captures a snapshot of the current state and allows
-// accumulating changes in memory before atomically committing them.
+// Begin starts a new transaction with Read Committed isolation.
+// Captures a snapshot and accumulates changes in memory.
 //
-// Multiple transactions can read concurrently, but writes are serialized.
-// Uncommitted changes are isolated from other readers until Commit.
+// Writes are serialized. Uncommitted changes are isolated until Commit.
 func (kv *KV[F]) Begin() (tx *Tx[Iter[F]]) {
 	tx = new(Tx[Iter[F]])
-	tx.Begin(kv.Iter(), kv.Batch)
+	tx.Begin(kv.Iter(), kv.commit)
 	return
 }
 
 // Tx represents a transaction with Read Committed isolation.
-// Changes are buffered in memory until Commit, allowing bulk updates
-// without affecting concurrent readers. The transaction maintains a
-// snapshot view and merges pending changes on read.
+// Buffers changes in memory until Commit.
 type Tx[Iter Iterator[Iter]] struct {
 	commit   Commit
 	snapshot Iter
 	pending  btree.BTree
 }
 
-// Commit is a function type for committing sorted changes to the store.
+// Commit is a function type for committing sorted changes.
 type Commit = func(sortedChanges func(yield func([]byte, []byte) bool)) error
 
 // Begin initializes the transaction with a snapshot and commit function.
@@ -50,8 +46,7 @@ func (tx *Tx[Iter]) close() {
 }
 
 // Rollback discards all pending changes and closes the transaction.
-// After rollback, the transaction cannot be reused and any operations
-// will return ErrClosed.
+// Transaction cannot be reused after rollback.
 func (tx *Tx[Iter]) Rollback() {
 	if tx.commit == nil {
 		return
@@ -60,8 +55,8 @@ func (tx *Tx[Iter]) Rollback() {
 }
 
 // Commit atomically writes all pending changes to the store.
-// If no changes were made, returns immediately without error.
-// After commit (successful or not), the transaction is closed.
+// Returns immediately if no changes were made.
+// Transaction is closed after commit (successful or not).
 func (tx *Tx[Iter]) Commit() (err error) {
 	if tx.commit == nil {
 		err = bptree.ErrClosed
@@ -76,8 +71,8 @@ func (tx *Tx[Iter]) Commit() (err error) {
 }
 
 // Get retrieves a value within the transaction's view.
-// Checks pending changes first, then falls back to the snapshot.
-// Returns nil if the key does not exist in either location.
+// Checks pending changes first, then the snapshot.
+// Returns nil if key does not exist.
 func (tx *Tx[Iter]) Get(key []byte) (val []byte, err error) {
 	val, found := tx.pending.Get(key)
 	if found {
@@ -100,9 +95,10 @@ func (tx *Tx[Iter]) Get(key []byte) (val []byte, err error) {
 }
 
 // Set writes a key-value pair to the transaction's pending changes.
-// The change is buffered in memory and will only be visible to other
-// operations within this transaction until Commit is called.
-// To delete a key, pass nil as the value.
+// Changes are only visible within this transaction until Commit.
+// Pass nil value to delete a key.
+//
+// Warning: Caller must not modify key or val after calling Set.
 func (tx *Tx[Iter]) Set(key, val []byte) {
 	tx.pending.Set(key, val)
 }

@@ -1,4 +1,4 @@
-// Package btree provides an append-only, in-memory B-tree implementation with iterator support.
+// Package btree implements an append-only in-memory B-tree with iterator support.
 package btree
 
 import (
@@ -7,25 +7,25 @@ import (
 	"unsafe"
 )
 
-// BTree is an append-only, in-memory B-tree for storing key-value pairs in lexicographic order.
+// BTree is an append-only in-memory B-tree storing key-value pairs in lexicographic order.
 // Not thread-safe.
 //
-// Append-only means only updating a key's value is allowed (even to nil).
-// This enables two common use cases:
+// Append-only: only value updates allowed (including to nil).
+// Use cases:
 //   - Change tracking: Set(key, nil) marks deletion
-//   - Use as a Set: Ignore values, use Get's found to check key existence
+//   - Set data structure: ignore values, use Get's found flag
 //
-// Important: BTree stores references to key/val byte slices, not copies.
-// Do not modify the underlying arrays after calling Set.
+// Warning: BTree stores references to key/val slices, not copies.
+// Caller must not modify slices after calling Set.
 //
-// Example usage:
+// Example:
 //
 //	var btree BTree
 //	btree.Set([]byte("key"), []byte("value"))
 //	val, found := btree.Get([]byte("key"))  // val == "value", found == true
 //
 //	for key, val := range btree.Items {
-//		fmt.Printf("Item: %s = %s\n", key, val)
+//		// process key, val
 //	}
 //
 //	btree.Reset()  // Clear all data
@@ -49,15 +49,15 @@ func (btree *BTree) Reset() {
 }
 
 // Set updates the value for a key (inserts if key doesn't exist).
-// Passing nil as val updates the value to nil, which can represent deletion.
+// Pass nil value to mark deletion.
 func (btree *BTree) Set(key, val []byte) {
 	btree.version++
 	btree.set(b2s(key), b2s(val))
 }
 
 // Get retrieves the value for a key.
-// When val is nil and found is true, the key exists but its value was set to nil.
-// When found is false, the key doesn't exist in the BTree.
+// If val is nil and found is true, the key exists but value is nil.
+// If found is false, the key doesn't exist.
 func (btree *BTree) Get(key []byte) (val []byte, found bool) {
 	v, found := btree.get(b2s(key))
 	return s2b(v), found
@@ -68,8 +68,10 @@ func (btree *BTree) Empty() bool {
 	return len(btree.items) == 0
 }
 
-// Items implements iter.Seq2[[]byte, []byte], iterating all key-value pairs in lexicographic order.
-// Includes deleted keys (val==nil). Returned slices are valid only within the yield call.
+// Items iterates all key-value pairs in lexicographic order.
+// Includes deleted keys (val==nil).
+//
+// Warning: Returned slices are valid only within yield call.
 func (btree *BTree) Items(yield func(key, val []byte) bool) {
 	if btree.last == nil {
 		for i := 0; i < len(btree.items); i++ {
