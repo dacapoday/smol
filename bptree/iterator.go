@@ -28,7 +28,7 @@ type Iterator[B ReadOnly, C Checkpoint] struct {
 
 type ator[B ReadOnly, C Checkpoint] = Reader[B, *Root[C]]
 
-// Clone creates a new iterator with the same position as the current one.
+// Clone creates an independent copy at current position.
 func (iter Iterator[B, C]) Clone() (newIter Iterator[B, C]) {
 	newIter.ator = new(ator[B, C])
 	if root := iter.ator.Root(); root != nil {
@@ -38,6 +38,7 @@ func (iter Iterator[B, C]) Clone() (newIter Iterator[B, C]) {
 	return
 }
 
+// Close releases resources held by the iterator.
 func (iter Iterator[B, C]) Close() {
 	if root := iter.ator.Root(); root != nil {
 		root.Checkpoint().Release()
@@ -47,10 +48,12 @@ func (iter Iterator[B, C]) Close() {
 
 var _ iterator.Iterator = (*Reader[ReadOnly, RootBlock])(nil)
 
+// Valid returns true if positioned at a valid item.
 func (reader *Reader[B, R]) Valid() bool {
 	return reader.err == null
 }
 
+// Error returns any error encountered during iteration.
 func (reader *Reader[B, R]) Error() error {
 	if reader.err == nil {
 		return ErrClosed
@@ -61,6 +64,9 @@ func (reader *Reader[B, R]) Error() error {
 	return reader.err
 }
 
+// Key returns the current key, or nil if invalid.
+//
+// Warning: Returned slice is valid only until next method call.
 func (reader *Reader[B, R]) Key() (key []byte) {
 	if reader.err != null {
 		return
@@ -82,6 +88,9 @@ func (reader *Reader[B, R]) Key() (key []byte) {
 	return
 }
 
+// Val returns the current value, or nil if invalid or deleted.
+//
+// Warning: Returned slice is valid only until next method call.
 func (reader *Reader[B, R]) Val() (val []byte) {
 	if reader.err != null {
 		return
@@ -103,6 +112,7 @@ func (reader *Reader[B, R]) Val() (val []byte) {
 	return
 }
 
+// Next advances to the next item.
 func (reader *Reader[B, R]) Next() bool {
 	if reader.err != null {
 		return false
@@ -160,6 +170,7 @@ func (reader *Reader[B, R]) Next() bool {
 	return true
 }
 
+// Prev moves to the previous item.
 func (reader *Reader[B, R]) Prev() bool {
 	if reader.err != null {
 		return false
@@ -218,6 +229,7 @@ func (reader *Reader[B, R]) Prev() bool {
 	return true
 }
 
+// SeekFirst positions at the first key.
 func (reader *Reader[B, R]) SeekFirst() bool {
 	// if reader.err != null {
 	// 	return false
@@ -273,6 +285,7 @@ func (reader *Reader[B, R]) SeekFirst() bool {
 	return true
 }
 
+// SeekLast positions at the last key.
 func (reader *Reader[B, R]) SeekLast() bool {
 	// if reader.err != null {
 	// 	return false
@@ -331,6 +344,7 @@ func (reader *Reader[B, R]) SeekLast() bool {
 	return true
 }
 
+// Seek positions at the first key >= the given key.
 func (reader *Reader[B, R]) Seek(key []byte) bool {
 	// if reader.err != null {
 	// 	return false

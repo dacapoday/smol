@@ -35,51 +35,67 @@ func (kv *KV[F]) Iter() (iter Iter[F]) {
 }
 
 // Iter is an iterator over a KV store snapshot.
+// Implements iterator.Iterator interface.
 type Iter[F File] struct {
 	ator bptree.Iterator[*block.CRC32Heap[F], block.HeapCheckpoint]
 }
 
+// Clone creates an independent copy at current position.
 func (iter Iter[F]) Clone() (newIter Iter[F]) {
 	newIter.ator = iter.ator.Clone()
 	return
 }
 
+// Close releases resources held by the iterator.
 func (iter Iter[F]) Close() {
 	iter.ator.Close()
 }
 
+// Valid returns true if positioned at a valid item.
 func (iter Iter[F]) Valid() bool {
 	return iter.ator.Valid()
 }
 
+// Error returns any error encountered during iteration.
 func (iter Iter[F]) Error() error {
 	return iter.ator.Error()
 }
 
+// Key returns the current key, or nil if invalid.
+//
+// Warning: Returned slice is valid only until next method call.
 func (iter Iter[F]) Key() []byte {
 	return iter.ator.Key()
 }
 
+// Val returns the current value, or nil if invalid or deleted.
+//
+// Warning: Returned slice is valid only until next method call.
 func (iter Iter[F]) Val() []byte {
 	return iter.ator.Val()
 }
 
+// Next advances to the next item.
 func (iter Iter[F]) Next() bool {
 	return iter.ator.Next()
 }
 
+// Prev moves to the previous item.
 func (iter Iter[F]) Prev() bool {
 	return iter.ator.Prev()
 }
 
+// SeekFirst positions at the first key.
 func (iter Iter[F]) SeekFirst() bool {
 	return iter.ator.SeekFirst()
 }
 
+// SeekLast positions at the last key.
 func (iter Iter[F]) SeekLast() bool {
 	return iter.ator.SeekLast()
 }
 
+// Seek positions at the first key >= the given key.
 func (iter Iter[F]) Seek(key []byte) bool {
 	return iter.ator.Seek(key)
 }
@@ -98,53 +114,69 @@ var _ Iterator[TxIter[DBIter]] = TxIter[DBIter]{}
 
 // TxIter is an iterator over a transaction's view.
 // Merges pending changes with the base snapshot.
+// Implements iterator.Iterator interface.
 type TxIter[Iter Iterator[Iter]] struct {
 	ator *iterator.Combine[btree.Iter, Iter]
 }
 
+// Clone creates an independent copy at current position.
 func (iter TxIter[Iter]) Clone() (newIter TxIter[Iter]) {
 	newIter.ator = new(iterator.Combine[btree.Iter, Iter])
 	newIter.ator.Load(iter.ator.Over().Clone(), iter.ator.Base().Clone(), iter.ator)
 	return
 }
 
+// Close releases resources held by the iterator.
 func (iter TxIter[Iter]) Close() {
 	iter.ator.Base().Close()
 	iter.ator.Load(iter.ator.Over(), iter.ator.Base(), nil)
 }
 
+// Valid returns true if positioned at a valid item.
 func (iter TxIter[Iter]) Valid() bool {
 	return iter.ator.Valid()
 }
 
+// Error returns any error encountered during iteration.
 func (iter TxIter[Iter]) Error() error {
 	return iter.ator.Error()
 }
 
+// Key returns the current key, or nil if invalid.
+//
+// Warning: Returned slice is valid only until next method call.
 func (iter TxIter[Iter]) Key() []byte {
 	return iter.ator.Key()
 }
 
+// Val returns the current value, or nil if invalid or deleted.
+//
+// Warning: Returned slice is valid only until next method call.
 func (iter TxIter[Iter]) Val() []byte {
 	return iter.ator.Val()
 }
 
+// Next advances to the next item.
 func (iter TxIter[Iter]) Next() bool {
 	return iter.ator.Next()
 }
 
+// Prev moves to the previous item.
 func (iter TxIter[Iter]) Prev() bool {
 	return iter.ator.Prev()
 }
 
+// SeekFirst positions at the first key.
 func (iter TxIter[Iter]) SeekFirst() bool {
 	return iter.ator.SeekFirst()
 }
 
+// SeekLast positions at the last key.
 func (iter TxIter[Iter]) SeekLast() bool {
 	return iter.ator.SeekLast()
 }
 
+// Seek positions at the first key >= the given key.
 func (iter TxIter[Iter]) Seek(key []byte) bool {
 	return iter.ator.Seek(key)
 }
