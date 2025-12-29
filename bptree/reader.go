@@ -23,6 +23,8 @@ func (reader *Reader[B, R]) Root() R {
 	return reader.root
 }
 
+// Load initializes the reader with block and root.
+// Positions reader before the first entry.
 func (reader *Reader[B, R]) Load(block B, root R) {
 	reader.block = block
 	reader.root = root
@@ -41,6 +43,8 @@ func (reader *Reader[B, R]) Load(block B, root R) {
 	reader.index = 0
 }
 
+// LoadFrom initializes the reader by copying state from src.
+// Creates independent copy at the same position.
 func (dst *Reader[B, R]) LoadFrom(src *Reader[B, R]) {
 	dst.block = src.block
 	dst.root = src.root
@@ -69,6 +73,7 @@ func (dst *Reader[B, R]) LoadFrom(src *Reader[B, R]) {
 	}
 }
 
+// Close releases resources and resets the reader.
 func (reader *Reader[B, R]) Close() {
 	if len(reader.level) != 0 {
 		reader.block.RecycleBuffer(reader.page)
