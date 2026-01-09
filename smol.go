@@ -2,8 +2,6 @@
 package smol
 
 import (
-	"errors"
-	"hash/crc32"
 	"io"
 )
 
@@ -110,24 +108,3 @@ type ReadOnly interface {
 	// Warning: Caller must not use buffer after recycling.
 	RecycleBuffer(buffer []byte)
 }
-
-var (
-	ErrOpened              = errors.New("opened")
-	ErrClosed              = errors.New("closed")
-	ErrFileEmpty           = errors.New("empty file")
-	ErrFileTruncated       = errors.New("file truncated")
-	ErrUnknownMagicCode    = errors.New("unknown magic code")
-	ErrUnsupported         = errors.New("unsupported version")
-	ErrInvalidBlockSize    = errors.New("invalid block size")
-	ErrInvalidChecksum     = errors.New("invalid checksum")
-	ErrInvalidMeta         = errors.New("invalid meta")
-	ErrInvalidFreelist     = errors.New("invalid freelist")
-	ErrReadOnly            = errors.New("read only")
-	ErrOutOfRange          = errors.New("out of range")
-	ErrOutOfSpace          = errors.New("out of space")
-	ErrInvalidOverflowHead = errors.New("invalid OverflowHead")
-	ErrInvalidOverflowPage = errors.New("invalid OverflowPage")
-	ErrAllocateFailed      = errors.New("allocate BlockID failed")
-)
-
-var CastagnoliCrcTable = crc32.MakeTable(crc32.Castagnoli)

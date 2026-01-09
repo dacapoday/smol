@@ -22,8 +22,10 @@ type HeapOption interface {
 	RetainCheckpoints() uint8
 }
 
+var castagnoliCrcTable = crc32.MakeTable(crc32.Castagnoli)
+
 func checksum(data []byte) uint32 {
-	return crc32.Checksum(data, smol.CastagnoliCrcTable)
+	return crc32.Checksum(data, castagnoliCrcTable)
 }
 
 var _ smol.Block[HeapCheckpoint] = (*CRC32Heap[File])(nil)

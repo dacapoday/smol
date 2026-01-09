@@ -6,6 +6,7 @@ package heap
 import (
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"iter"
 	"os"
 	"sync"
@@ -15,7 +16,7 @@ import (
 	"github.com/dacapoday/smol"
 )
 
-var castagnoliCrcTable = smol.CastagnoliCrcTable
+var castagnoliCrcTable = crc32.MakeTable(crc32.Castagnoli)
 
 type BlockID = smol.BlockID
 type File = smol.File
