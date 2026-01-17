@@ -1,259 +1,150 @@
-// Copyright 2025 dacapoday
-// SPDX-License-Identifier: Apache-2.0
-
 package heap
 
-import (
-	"testing"
+import "testing"
 
-	"maps"
+func TestRingPushShift(t *testing.T) {
+	var r ring
+	r.capacity = 5
+	r.reset()
 
-	"github.com/stretchr/testify/require"
-)
+	// push until full
+	for i := BlockID(1); i <= 5; i++ {
+		if !r.push(i) {
+			t.Fatalf("push %d failed", i)
+		}
+	}
+	if !r.full() || r.push(6) {
+		t.Error("should be full")
+	}
 
-func TestRingBasic(t *testing.T) {
-	var ring ring
-	ring.capacity = 7
-	ring.reset()
+	// shift all, verify FIFO
+	for i := BlockID(1); i <= 5; i++ {
+		if got := r.shift(); got != i {
+			t.Errorf("shift: got %d, want %d", got, i)
+		}
+	}
+	if !r.empty() || r.shift() != 0 {
+		t.Error("should be empty")
+	}
 
-	require.True(t, ring.empty())
-	require.False(t, ring.full())
-
-	id := ring.shift()
-	require.EqualValues(t, 0, id)
-
-	require.True(t, ring.push(11))
-	require.True(t, ring.push(12))
-	require.True(t, ring.push(13))
-	require.True(t, ring.push(14))
-	require.True(t, ring.push(15))
-	require.True(t, ring.push(16))
-	require.True(t, ring.push(17))
-	require.False(t, ring.push(18))
-
-	require.False(t, ring.empty())
-	require.True(t, ring.full())
-
-	require.EqualValues(t, 11, ring.shift())
-	require.EqualValues(t, 12, ring.shift())
-	require.EqualValues(t, 13, ring.shift())
-	require.EqualValues(t, 14, ring.shift())
-	require.EqualValues(t, 15, ring.shift())
-	require.EqualValues(t, 16, ring.shift())
-	require.EqualValues(t, 17, ring.shift())
-	require.EqualValues(t, 0, ring.shift())
-
-	require.True(t, ring.push(11))
-	require.True(t, ring.push(12))
-	require.True(t, ring.push(13))
-	require.True(t, ring.push(14))
-	require.True(t, ring.push(15))
-	require.True(t, ring.push(16))
-	require.True(t, ring.push(17))
-	require.False(t, ring.push(18))
-
-	require.False(t, ring.empty())
-	require.True(t, ring.full())
-
-	require.EqualValues(t, 11, ring.shift())
-	require.EqualValues(t, 12, ring.shift())
-	require.EqualValues(t, 13, ring.shift())
-	require.EqualValues(t, 14, ring.shift())
-	require.EqualValues(t, 15, ring.shift())
-	require.EqualValues(t, 16, ring.shift())
-	require.EqualValues(t, 17, ring.shift())
-	require.EqualValues(t, 0, ring.shift())
-}
-
-func TestRingEmpty(t *testing.T) {
-	var ring ring
-
-	require.True(t, ring.empty())
-	require.True(t, ring.full())
-
-	id := ring.shift()
-	require.EqualValues(t, 0, id)
-
-	require.False(t, ring.push(18))
+	// wrap around: push again after shift
+	for i := BlockID(10); i <= 14; i++ {
+		r.push(i)
+	}
+	for i := BlockID(10); i <= 14; i++ {
+		if got := r.shift(); got != i {
+			t.Errorf("wrap: got %d, want %d", got, i)
+		}
+	}
 }
 
 func TestRingUnshift(t *testing.T) {
-	var ring ring
-	ring.capacity = 7
-	ring.reset()
+	var r ring
+	r.capacity = 5
+	r.reset()
 
-	require.True(t, ring.unshift(11))
-	require.True(t, ring.unshift(12))
-	require.True(t, ring.unshift(13))
-	require.True(t, ring.unshift(14))
-	require.True(t, ring.unshift(15))
-	require.True(t, ring.unshift(16))
-	require.True(t, ring.unshift(17))
-	require.False(t, ring.unshift(18))
+	// unshift reverses order
+	for i := BlockID(1); i <= 5; i++ {
+		if !r.unshift(i) {
+			t.Fatalf("unshift %d failed", i)
+		}
+	}
+	if !r.full() || r.unshift(6) {
+		t.Error("should be full")
+	}
 
-	require.False(t, ring.empty())
-	require.True(t, ring.full())
-
-	require.EqualValues(t, 17, ring.shift())
-	require.EqualValues(t, 16, ring.shift())
-	require.EqualValues(t, 15, ring.shift())
-	require.EqualValues(t, 14, ring.shift())
-	require.EqualValues(t, 13, ring.shift())
-	require.EqualValues(t, 12, ring.shift())
-	require.EqualValues(t, 11, ring.shift())
-	require.EqualValues(t, 0, ring.shift())
-
-	require.True(t, ring.unshift(11))
-	require.True(t, ring.unshift(12))
-	require.True(t, ring.unshift(13))
-	require.True(t, ring.unshift(14))
-	require.True(t, ring.unshift(15))
-	require.True(t, ring.unshift(16))
-	require.True(t, ring.unshift(17))
-	require.False(t, ring.unshift(18))
-
-	require.False(t, ring.empty())
-	require.True(t, ring.full())
-
-	require.EqualValues(t, 17, ring.shift())
-	require.EqualValues(t, 16, ring.shift())
-	require.EqualValues(t, 15, ring.shift())
-	require.EqualValues(t, 14, ring.shift())
-	require.EqualValues(t, 13, ring.shift())
-	require.EqualValues(t, 12, ring.shift())
-	require.EqualValues(t, 11, ring.shift())
-	require.EqualValues(t, 0, ring.shift())
+	// shift returns reverse order: 5, 4, 3, 2, 1
+	for i := BlockID(5); i >= 1; i-- {
+		if got := r.shift(); got != i {
+			t.Errorf("got %d, want %d", got, i)
+		}
+	}
 }
 
 func TestRingTopBottom(t *testing.T) {
-	var ring ring
-	ring.capacity = 7
-	ring.reset()
+	var r ring
+	r.capacity = 5
+	r.reset()
 
-	require.EqualValues(t, 0, ring.top())
-	require.EqualValues(t, 0, ring.bottom())
+	// empty
+	if r.top() != 0 || r.bottom() != 0 {
+		t.Error("empty ring: top/bottom should be 0")
+	}
 
-	require.True(t, ring.unshift(11))
-	require.EqualValues(t, 11, ring.top())
-	require.EqualValues(t, 11, ring.bottom())
-	require.True(t, ring.unshift(12))
-	require.EqualValues(t, 12, ring.top())
-	require.EqualValues(t, 11, ring.bottom())
-	require.True(t, ring.unshift(13))
-	require.EqualValues(t, 13, ring.top())
-	require.EqualValues(t, 11, ring.bottom())
-	require.True(t, ring.unshift(14))
-	require.EqualValues(t, 14, ring.top())
-	require.EqualValues(t, 11, ring.bottom())
-	require.True(t, ring.unshift(15))
-	require.EqualValues(t, 15, ring.top())
-	require.EqualValues(t, 11, ring.bottom())
-	require.True(t, ring.unshift(16))
-	require.EqualValues(t, 16, ring.top())
-	require.EqualValues(t, 11, ring.bottom())
-	require.True(t, ring.unshift(17))
-	require.EqualValues(t, 17, ring.top())
-	require.EqualValues(t, 11, ring.bottom())
-	require.False(t, ring.unshift(18))
-	require.EqualValues(t, 17, ring.top())
-	require.EqualValues(t, 11, ring.bottom())
+	r.push(10)
+	r.push(20)
+	if r.top() != 10 || r.bottom() != 20 {
+		t.Errorf("top=%d bottom=%d, want 10, 20", r.top(), r.bottom())
+	}
 
-	require.False(t, ring.empty())
-	require.True(t, ring.full())
+	r.shift()
+	if r.top() != 20 || r.bottom() != 20 {
+		t.Errorf("after shift: top=%d bottom=%d, want both 20", r.top(), r.bottom())
+	}
 
-	require.EqualValues(t, 17, ring.shift())
-	require.EqualValues(t, 16, ring.top())
-	require.EqualValues(t, 11, ring.bottom())
-	require.EqualValues(t, 16, ring.shift())
-	require.EqualValues(t, 15, ring.top())
-	require.EqualValues(t, 11, ring.bottom())
-	require.EqualValues(t, 15, ring.shift())
-	require.EqualValues(t, 14, ring.top())
-	require.EqualValues(t, 11, ring.bottom())
-	require.EqualValues(t, 14, ring.shift())
-	require.EqualValues(t, 13, ring.top())
-	require.EqualValues(t, 11, ring.bottom())
-	require.EqualValues(t, 13, ring.shift())
-	require.EqualValues(t, 12, ring.top())
-	require.EqualValues(t, 11, ring.bottom())
-	require.EqualValues(t, 12, ring.shift())
-	require.EqualValues(t, 11, ring.top())
-	require.EqualValues(t, 11, ring.bottom())
-	require.EqualValues(t, 11, ring.shift())
-	require.EqualValues(t, 0, ring.top())
-	require.EqualValues(t, 0, ring.bottom())
-	require.EqualValues(t, 0, ring.shift())
-	require.EqualValues(t, 0, ring.top())
-	require.EqualValues(t, 0, ring.bottom())
+	// unshift inserts at head
+	r.unshift(5)
+	if r.top() != 5 || r.bottom() != 20 {
+		t.Errorf("after unshift: top=%d bottom=%d, want 5, 20", r.top(), r.bottom())
+	}
+}
 
-	require.True(t, ring.push(11))
-	require.EqualValues(t, 11, ring.top())
-	require.EqualValues(t, 11, ring.bottom())
-	require.True(t, ring.push(12))
-	require.EqualValues(t, 11, ring.top())
-	require.EqualValues(t, 12, ring.bottom())
-	require.True(t, ring.push(13))
-	require.EqualValues(t, 11, ring.top())
-	require.EqualValues(t, 13, ring.bottom())
-	require.True(t, ring.push(14))
-	require.EqualValues(t, 11, ring.top())
-	require.EqualValues(t, 14, ring.bottom())
-	require.True(t, ring.push(15))
-	require.EqualValues(t, 11, ring.top())
-	require.EqualValues(t, 15, ring.bottom())
-	require.True(t, ring.push(16))
-	require.EqualValues(t, 11, ring.top())
-	require.EqualValues(t, 16, ring.bottom())
-	require.True(t, ring.push(17))
-	require.EqualValues(t, 11, ring.top())
-	require.EqualValues(t, 17, ring.bottom())
-	require.False(t, ring.push(18))
-	require.EqualValues(t, 11, ring.top())
-	require.EqualValues(t, 17, ring.bottom())
-
-	require.False(t, ring.empty())
-	require.True(t, ring.full())
-
-	require.EqualValues(t, 11, ring.shift())
-	require.EqualValues(t, 12, ring.top())
-	require.EqualValues(t, 17, ring.bottom())
-	require.EqualValues(t, 12, ring.shift())
-	require.EqualValues(t, 13, ring.top())
-	require.EqualValues(t, 17, ring.bottom())
-	require.EqualValues(t, 13, ring.shift())
-	require.EqualValues(t, 14, ring.top())
-	require.EqualValues(t, 17, ring.bottom())
-	require.EqualValues(t, 14, ring.shift())
-	require.EqualValues(t, 15, ring.top())
-	require.EqualValues(t, 17, ring.bottom())
-	require.EqualValues(t, 15, ring.shift())
-	require.EqualValues(t, 16, ring.top())
-	require.EqualValues(t, 17, ring.bottom())
-	require.EqualValues(t, 16, ring.shift())
-	require.EqualValues(t, 17, ring.top())
-	require.EqualValues(t, 17, ring.bottom())
-	require.EqualValues(t, 17, ring.shift())
-	require.EqualValues(t, 0, ring.top())
-	require.EqualValues(t, 0, ring.bottom())
-	require.EqualValues(t, 0, ring.shift())
-	require.EqualValues(t, 0, ring.top())
-	require.EqualValues(t, 0, ring.bottom())
+func TestRingZeroCapacity(t *testing.T) {
+	var r ring
+	// zero capacity: both empty and full
+	if !r.empty() || !r.full() {
+		t.Error("zero cap should be empty and full")
+	}
+	if r.push(10) || r.unshift(10) {
+		t.Error("push/unshift should fail")
+	}
 }
 
 func TestRingFreelist(t *testing.T) {
-	var ring ring
+	var r ring
+	r.capacity = 5
+	r.reset()
 
-	const size = 17
-
-	ring.capacity = size
-	ring.reset()
-
-	for i := range BlockID(size) {
-		require.True(t, ring.push(i+1))
+	// create wrap-around state
+	for i := BlockID(1); i <= 5; i++ {
+		r.push(i)
 	}
-	ids := maps.Collect(ring.freelist)
-	require.Equal(t, size, len(ids))
-	for k, v := range ids {
-		require.Equal(t, uint32(k)+v, uint32(size))
+	r.shift() // remove 1
+	r.shift() // remove 2
+	r.push(6)
+	r.push(7)
+	// buffer: [6, 7, 3, 4, 5], head=2, FIFO: 3, 4, 5, 6, 7
+
+	expected := []BlockID{3, 4, 5, 6, 7}
+	idx := 0
+	for _, id := range r.freelist {
+		if BlockID(id) != expected[idx] {
+			t.Errorf("freelist[%d]: got %d, want %d", idx, id, expected[idx])
+		}
+		idx++
+	}
+	if idx != len(expected) {
+		t.Errorf("freelist count: got %d, want %d", idx, len(expected))
+	}
+}
+
+func TestRingReset(t *testing.T) {
+	var r ring
+	r.capacity = 5
+	r.reset()
+
+	r.push(10)
+	r.push(20)
+	r.shift()
+
+	r.reset()
+	if !r.empty() || r.head != 0 || r.tail != 0 {
+		t.Errorf("after reset: empty=%v head=%d tail=%d", r.empty(), r.head, r.tail)
+	}
+
+	// usable after reset
+	r.push(100)
+	if r.shift() != 100 {
+		t.Error("not usable after reset")
 	}
 }

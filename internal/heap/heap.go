@@ -6,9 +6,6 @@ package heap
 import (
 	"errors"
 	"fmt"
-	"hash/crc32"
-	"iter"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,13 +13,14 @@ import (
 	"github.com/dacapoday/smol"
 )
 
-var castagnoliCrcTable = crc32.MakeTable(crc32.Castagnoli)
-
 type BlockID = smol.BlockID
 type File = smol.File
 
 type Heap[F File] struct {
+	codec
 	block[F]
+	buffer []byte
+
 	free
 	tail, base, head *checkpoint
 
@@ -30,6 +28,7 @@ type Heap[F File] struct {
 	mutex sync.Mutex
 
 	ckp    uint32
+	magic  [4]byte
 	metaID BlockID
 
 	ignoreInvalidFreelist bool
@@ -51,48 +50,32 @@ type checkpoint struct {
 var _ smol.Checkpoint = (*checkpoint)(nil)
 
 func (ckpt *checkpoint) Acquire() {
-	ckpt.ref.Add(1)
+	ckpt.ref.Add(1) // TODO: check overflow
 }
 
 func (ckpt *checkpoint) Release() {
 	ckpt.ref.Add(-1)
 }
 
+func (ckpt *checkpoint) Valid() bool {
+	return ckpt.ref.Load() > 0
+}
+
+func (heap *Heap[F]) PageSize() int {
+	return heap.BlockSize() - heap.codec.size()
+}
+
 func (heap *Heap[F]) Load(file F, opt Option) (meta *Meta, ckpt Checkpoint, err error) {
 	heap.mutex.Lock()
 	defer heap.mutex.Unlock()
 
-	if heap.block.opened() {
+	if heap.buffer != nil {
 		err = fmt.Errorf("already %w", ErrOpened)
 		return
 	}
 
-	magic := opt.MagicCode()
-	meta, err = heap.block.load(file, magic)
+	meta, err = heap.load(file, opt)
 	if err != nil {
-		if opt.ReadOnly() || !errors.Is(err, ErrFileEmpty) {
-			err = fmt.Errorf("heap.block.load failed: %w", err)
-			return
-		}
-
-		var blockSize int
-		if o, ok := opt.(BlockSize); ok {
-			blockSize = o.BlockSize()
-		} else {
-			blockSize = os.Getpagesize()
-		}
-		if blockSize > 64*1024 || blockSize < 512 {
-			err = fmt.Errorf("%d is %w", blockSize, ErrInvalidBlockSize)
-			return
-		}
-
-		meta, err = heap.block.init(file, magic, uint32(blockSize))
-		if err != nil {
-			err = fmt.Errorf("heap.block.init failed: %w", err)
-			return
-		}
-	} else if err = heap.loadEntry(meta); err != nil {
-		meta = nil
 		return
 	}
 
@@ -106,8 +89,9 @@ func (heap *Heap[F]) Load(file F, opt Option) (meta *Meta, ckpt Checkpoint, err 
 
 	heap.ignoreInvalidFreelist = opt.IgnoreInvalidFreelist()
 	heap.free.tail.capacity = freelistCapacity(heap.block.size)
-	if err = restore(heap, meta); err != nil {
+	if err = heap.restore(meta); err != nil {
 		meta = nil
+		heap.buffer = nil
 		return
 	}
 
@@ -129,8 +113,6 @@ func (heap *Heap[F]) Load(file F, opt Option) (meta *Meta, ckpt Checkpoint, err 
 
 	replay(meta.FreeRecycled)
 	heap.tail = heap.head
-	heap.ckp = meta.Ckp
-	heap.metaID = meta.ID
 	ckpt = heap.tail
 	ckpt.Acquire()
 
@@ -202,8 +184,10 @@ func (heap *Heap[F]) Close() error {
 	heap.mutex.Lock()
 	defer heap.mutex.Unlock()
 
-	heap.tail, heap.base, heap.head = nil, nil, nil
+	heap.tail, heap.base, heap.head = nil, nil, nil // TODO: check checkpoint leak reduce ref count
 	heap.free = free{}
+	heap.codec.close()
+	heap.buffer = nil
 	return heap.block.close()
 }
 
@@ -229,12 +213,12 @@ func (heap *Heap[F]) extend() BlockID {
 
 func (heap *Heap[F]) Allocate() (blockID BlockID, reuse bool) {
 	heap.mutex.Lock()
-	blockID, reuse = allocate(heap, heap.recycle)
+	blockID, reuse = heap.allocate(heap.recycle)
 	heap.mutex.Unlock()
 	return
 }
 
-func (heap *Heap[F]) RecycleN(iter iter.Seq[BlockID]) {
+func (heap *Heap[F]) RecycleN(iter func(yield func(BlockID) bool)) {
 	heap.mutex.Lock()
 	for blockID := range iter {
 		if blockID < 2 {
@@ -256,54 +240,28 @@ func (heap *Heap[F]) Recycle(blockID BlockID) {
 	heap.mutex.Unlock()
 }
 
-func (heap *Heap[F]) recycle(blockID BlockID) {
-	ids := []BlockID{blockID}
-	recycle := func(id BlockID) {
-		ids = append(ids, id)
+func (heap *Heap[F]) ReadBlock(blockID BlockID, buffer []byte) (err error) {
+	if _, err = heap.block.readAt(buffer, blockID); err != nil {
+		err = fmt.Errorf("read block(%v) failed: %w", blockID, err)
+		return
 	}
-
-	for len(ids) > 0 {
-		blockID = ids[0]
-		if !heap.free.tail.push(blockID) {
-			freelistID, reuse := allocate(heap, recycle)
-			if freelistID < 2 {
-				return
-			}
-			if reuse && heap.free.tail.push(blockID) {
-				if err := heap.commitFreelist(freelistID); err != nil {
-					err = fmt.Errorf("write freelist(%d) failed: %w", freelistID, err)
-					heap.phase.CompareAndSwap(readwrite, &phase{err})
-					return
-				}
-			} else {
-				if err := heap.commitFreelist(freelistID); err != nil {
-					err = fmt.Errorf("write freelist(%d) failed: %w", freelistID, err)
-					heap.phase.CompareAndSwap(readwrite, &phase{err})
-					return
-				}
-				if !heap.free.tail.push(blockID) {
-					panic(errors.New("!heap.free.tail.push(blockID)"))
-				}
-			}
-		}
-		heap.free.recycled++
-		ids = ids[1:]
-	}
+	return heap.codec.decode(buffer, blockID)
 }
 
 func (heap *Heap[F]) ReadAt(buffer []byte, blockID BlockID) (int, error) {
 	return heap.block.readAt(buffer, blockID)
 }
 
+func (heap *Heap[F]) WriteBlock(blockID BlockID, buffer []byte) (err error) {
+	heap.codec.encode(buffer, blockID)
+	_, err = heap.WriteAt(buffer, blockID)
+	return
+}
+
 func (heap *Heap[F]) WriteAt(buffer []byte, blockID BlockID) (n int, err error) {
 	if blockID < 2 {
 		panic(errors.New("blockID < 2"))
 	}
-	// blockSize := int(heap.block.size)
-	// bufferSize := len(buffer)
-	// if bufferSize > blockSize {
-	// 	panic(errors.New("bufferSize > blockSize"))
-	// }
 
 	if phase := heap.phase.Load(); phase != readwrite {
 		if phase == readyonly {
@@ -356,14 +314,14 @@ func (heap *Heap[F]) Rollback() (err error) {
 		}
 	}
 
-	meta, err := heap.block.meta(BlockID(heap.ckp % 2))
+	meta, err := heap.meta(BlockID(heap.ckp % 2))
 	if err != nil {
 		return
 	}
 
 	rollback := meta.FreeRecycled + meta.FreeTotal - heap.free.total
 
-	if err = restore(heap, meta); err != nil {
+	if err = heap.restore(meta); err != nil {
 		return
 	}
 
@@ -384,6 +342,17 @@ func (heap *Heap[F]) Rollback() (err error) {
 }
 
 func (heap *Heap[F]) Commit(entry []byte) (meta *Meta, ckpt Checkpoint, err error) {
+	entrySize := len(entry)
+	if entrySize > heap.PageSize() {
+		if heap.codec.spec == nil {
+			if entrySize > heap.BlockSize() {
+				panic(errors.New("entrySize > blockSize"))
+			}
+		} else {
+			panic(errors.New("entrySize > pageSize"))
+		}
+	}
+
 	heap.mutex.Lock()
 	defer heap.mutex.Unlock()
 
@@ -403,7 +372,7 @@ func (heap *Heap[F]) Commit(entry []byte) (meta *Meta, ckpt Checkpoint, err erro
 	meta = new(Meta)
 	meta.UpdateTime = time.Now().UnixMilli()
 	if heap.base != heap.tail {
-		meta.ID, _ = allocate(heap, heap.recycle)
+		meta.ID, _ = heap.allocate(heap.recycle)
 		if meta.ID < 2 {
 			meta = nil
 			err = heap.Error()
@@ -412,6 +381,7 @@ func (heap *Heap[F]) Commit(entry []byte) (meta *Meta, ckpt Checkpoint, err erro
 	}
 	meta.PrevID = heap.metaID
 	meta.BlockSize = uint32(heap.block.size)
+	meta.CodecSpec = heap.codec.spec
 	meta.Ckp = heap.ckp + 1
 
 	defer func() {
@@ -436,8 +406,8 @@ func (heap *Heap[F]) Commit(entry []byte) (meta *Meta, ckpt Checkpoint, err erro
 		heap.ckp = meta.Ckp
 		heap.metaID = meta.ID
 
+		meta.Entry = entry
 		if meta.EntryID > 1 {
-			meta.Entry = entry
 			heap.recycle(meta.EntryID)
 		}
 		if meta.ID > 1 {
@@ -445,17 +415,12 @@ func (heap *Heap[F]) Commit(entry []byte) (meta *Meta, ckpt Checkpoint, err erro
 		}
 	}()
 
-	entrySize := len(entry)
-	blockSize := int(heap.block.size)
-	if entrySize > blockSize {
-		panic(errors.New("entrySize > blockSize"))
-	}
 	meta.EntrySize = uint32(entrySize)
+	meta.Entry = heap.codec.encodeEntry(entry)
 
-	meta.Entry = entry
-	if blockSize >= entrySize+freelistSize(heap.free.tail.length)+74 {
-		err = heap.save(meta)
-		if !errors.Is(err, ErrOutOfRange) {
+	blockSize := int(heap.block.size)
+	if blockSize >= 4+sizeMeta(meta) {
+		if err = heap.save(meta); !errors.Is(err, ErrOutOfRange) {
 			if err != nil {
 				err = fmt.Errorf("save meta(%d) failed: %w", meta.Ckp%2, err)
 				heap.phase.CompareAndSwap(readwrite, &phase{err})
@@ -464,22 +429,19 @@ func (heap *Heap[F]) Commit(entry []byte) (meta *Meta, ckpt Checkpoint, err erro
 		}
 	}
 
-	if entrySize > blockSize-256 {
-		meta.EntryID, _ = allocate(heap, heap.recycle)
-		if meta.EntryID < 2 {
+	if len(meta.Entry) > blockSize-256 {
+		if meta.EntryID, _ = heap.allocate(heap.recycle); meta.EntryID < 2 {
 			err = heap.Error()
 			return
 		}
 
-		meta.Entry, err = heap.writeEntry(meta.EntryID, meta.Entry)
-		if err != nil {
-			err = fmt.Errorf("write entry(%d) failed: %w", meta.EntryID, err)
+		if err = heap.saveEntry(meta); err != nil {
+			err = fmt.Errorf("save entry(%d) failed: %w", meta.EntryID, err)
 			heap.phase.CompareAndSwap(readwrite, &phase{err})
 			return
 		}
 
-		err = heap.save(meta)
-		if !errors.Is(err, ErrOutOfRange) {
+		if err = heap.save(meta); !errors.Is(err, ErrOutOfRange) {
 			if err != nil {
 				err = fmt.Errorf("save meta(%d) failed: %w", meta.Ckp%2, err)
 				heap.phase.CompareAndSwap(readwrite, &phase{err})
@@ -489,48 +451,22 @@ func (heap *Heap[F]) Commit(entry []byte) (meta *Meta, ckpt Checkpoint, err erro
 	}
 
 	{
-		freelistID, _ := allocate(heap, heap.recycle)
+		freelistID, _ := heap.allocate(heap.recycle)
 		if freelistID < 2 {
 			err = heap.Error()
 			return
 		}
-		if err = heap.commitFreelist(freelistID); err != nil {
-			err = fmt.Errorf("write freelist(%d) failed: %w", freelistID, err)
+
+		if err = heap.saveFreelist(freelistID); err != nil {
+			err = fmt.Errorf("save freelist(%d) failed: %w", freelistID, err)
 			heap.phase.CompareAndSwap(readwrite, &phase{err})
 			return
 		}
 	}
 
-	err = heap.save(meta)
-	if err != nil {
+	if err = heap.save(meta); err != nil {
 		err = fmt.Errorf("save meta(%d) failed: %w", meta.Ckp%2, err)
 		heap.phase.CompareAndSwap(readwrite, &phase{err})
 	}
-	return
-}
-
-func (heap *Heap[F]) save(meta *Meta) (err error) {
-	meta.Freelist = heap.freelist()
-	meta.FreeRecycled = heap.free.recycled
-	meta.FreeTotal = heap.free.total
-	meta.BlockCount = heap.block.count
-	return heap.block.save(meta)
-}
-
-func (heap *Heap[F]) commitFreelist(blockID BlockID) (err error) {
-	{
-		freelist := heap.buffer
-		ring2freelist(&heap.free.tail, heap.free.queue.bottom(), freelist)
-		if _, err = heap.block.writeAt(freelist, blockID); err != nil {
-			return
-		}
-	}
-	heap.free.queue.push(blockID)
-	if heap.free.head == &heap.free.tail {
-		ring := heap.free.tail // copy
-		heap.free.head = &ring
-		heap.free.tail.buffer = nil // split ring
-	}
-	heap.free.tail.reset()
 	return
 }

@@ -15,7 +15,7 @@ func TestReaderBasic(t *testing.T) {
 	var f mem.File
 	file := &f
 
-	var b block.CRC32Heap[*mem.File]
+	var b block.Heap[*mem.File]
 	blk := &b
 
 	_, ckpt, err := blk.Load(file, option{})
@@ -45,7 +45,7 @@ func TestReaderBasic(t *testing.T) {
 	}
 
 	// Create reader and load
-	var reader Reader[*block.CRC32Heap[*mem.File], *Root[Checkpoint]]
+	var reader Reader[*block.Heap[*mem.File], *Root[Checkpoint]]
 	reader.Load(blk, root)
 	defer reader.Close()
 
@@ -81,7 +81,7 @@ func TestReaderEmptyTree(t *testing.T) {
 	var f mem.File
 	file := &f
 
-	var b block.CRC32Heap[*mem.File]
+	var b block.Heap[*mem.File]
 	blk := &b
 
 	_, ckpt, err := blk.Load(file, option{})
@@ -100,7 +100,7 @@ func TestReaderEmptyTree(t *testing.T) {
 	}
 
 	// Create reader and load
-	var reader Reader[*block.CRC32Heap[*mem.File], *Root[Checkpoint]]
+	var reader Reader[*block.Heap[*mem.File], *Root[Checkpoint]]
 	reader.Load(blk, root)
 	defer reader.Close()
 

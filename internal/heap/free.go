@@ -15,7 +15,13 @@ type free struct {
 	total, recycled uint32
 }
 
-func restore[F File](heap *Heap[F], meta *Meta) (err error) {
+func (free *free) freelist() (freelist Freelist) {
+	freelist = make([]byte, freelistSize(free.tail.length))
+	ring2freelist(&free.tail, free.queue.bottom(), freelist)
+	return
+}
+
+func (heap *Heap[F]) restore(meta *Meta) (err error) {
 	var free free
 	free.tail.capacity = heap.free.tail.capacity
 	free.tail.reset()
@@ -118,7 +124,7 @@ func restore[F File](heap *Heap[F], meta *Meta) (err error) {
 	return
 }
 
-func allocate[F File](heap *Heap[F], recycle func(BlockID)) (blockID BlockID, reuse bool) {
+func (heap *Heap[F]) allocate(recycle func(BlockID)) (blockID BlockID, reuse bool) {
 	for heap.head != nil && heap.head.ref.Load() <= 0 {
 		if heap.head.recycled == 0 {
 			heap.head = heap.head.next
@@ -166,10 +172,141 @@ func allocate[F File](heap *Heap[F], recycle func(BlockID)) (blockID BlockID, re
 	return heap.extend(), false
 }
 
-func (free *free) freelist() (freelist Freelist) {
-	freelist = make([]byte, freelistSize(free.tail.length))
-	ring2freelist(&free.tail, free.queue.bottom(), freelist)
+func (heap *Heap[F]) recycle(blockID BlockID) {
+	ids := []BlockID{blockID}
+	recycle := func(id BlockID) {
+		ids = append(ids, id)
+	}
+
+	for len(ids) > 0 {
+		blockID = ids[0]
+		if !heap.free.tail.push(blockID) {
+			freelistID, reuse := heap.allocate(recycle)
+			if freelistID < 2 {
+				return
+			}
+			if reuse && heap.free.tail.push(blockID) {
+				if err := heap.saveFreelist(freelistID); err != nil {
+					err = fmt.Errorf("write freelist(%d) failed: %w", freelistID, err)
+					heap.phase.CompareAndSwap(readwrite, &phase{err})
+					return
+				}
+			} else {
+				if err := heap.saveFreelist(freelistID); err != nil {
+					err = fmt.Errorf("write freelist(%d) failed: %w", freelistID, err)
+					heap.phase.CompareAndSwap(readwrite, &phase{err})
+					return
+				}
+				if !heap.free.tail.push(blockID) {
+					panic(errors.New("!heap.free.tail.push(blockID)"))
+				}
+			}
+		}
+		heap.free.recycled++
+		ids = ids[1:]
+	}
+}
+
+func (heap *Heap[F]) saveFreelist(blockID BlockID) (err error) {
+	{
+		freelist := heap.buffer
+		ring2freelist(&heap.free.tail, heap.free.queue.bottom(), freelist)
+		if _, err = heap.block.writeAt(freelist, blockID); err != nil {
+			return
+		}
+	}
+	heap.free.queue.push(blockID)
+	if heap.free.head == &heap.free.tail {
+		ring := heap.free.tail // copy
+		heap.free.head = &ring
+		heap.free.tail.buffer = nil // split ring
+	}
+	heap.free.tail.reset()
 	return
+}
+
+type queue struct {
+	head, tail *qnode
+}
+
+type qnode struct {
+	ring
+	next *qnode
+}
+
+func node(capacity uint16) *qnode {
+	return &qnode{ring: ring{
+		capacity: capacity,
+		buffer:   make([]BlockID, capacity),
+	}}
+}
+
+func (q *queue) top() (id BlockID) {
+	if q.head != nil {
+		id = q.head.top()
+		if id == 0 {
+			if q.head.next != nil {
+				id = q.head.next.top()
+			}
+		}
+	}
+	return
+}
+
+func (q *queue) bottom() BlockID {
+	if q.tail == nil {
+		return 0
+	}
+	return q.tail.bottom()
+}
+
+func (q *queue) shift() (id BlockID) {
+	if q.head == nil {
+		q.tail = nil
+		return
+	}
+	id = q.head.shift()
+	if id == 0 {
+		q.head.buffer = nil
+		q.head = q.head.next
+		id = q.shift()
+		return
+	}
+	return
+}
+
+func (q *queue) push(id BlockID) {
+	if q.tail == nil {
+		q.tail = node(4)
+		q.head = q.tail
+		q.tail.push(id)
+		return
+	}
+
+	if !q.tail.push(id) {
+		tail := node(min(q.head.capacity*2, 1024))
+		q.tail.next = tail
+		q.tail = tail
+		q.tail.push(id)
+		return
+	}
+}
+
+func (q *queue) unshift(id BlockID) {
+	if q.head == nil {
+		q.head = node(4)
+		q.tail = q.head
+		q.head.unshift(id)
+		return
+	}
+
+	if !q.head.unshift(id) {
+		head := node(min(q.head.capacity*2, 1024))
+		head.next = q.head
+		q.head = head
+		q.head.unshift(id)
+		return
+	}
 }
 
 type ring struct {
@@ -259,89 +396,5 @@ func (ring *ring) freelist(yield func(i uint16, id uint32) bool) {
 			return
 		}
 		index = (index + 1) % ring.capacity
-	}
-}
-
-type queue struct {
-	head, tail *qnode
-}
-
-type qnode struct {
-	ring
-	next *qnode
-}
-
-func node(capacity uint16) *qnode {
-	return &qnode{ring: ring{
-		capacity: capacity,
-		buffer:   make([]BlockID, capacity),
-	}}
-}
-
-func (q *queue) top() (id BlockID) {
-	if q.head != nil {
-		id = q.head.top()
-		if id == 0 {
-			if q.head.next != nil {
-				id = q.head.next.top()
-			}
-		}
-	}
-	return
-}
-
-func (q *queue) bottom() BlockID {
-	if q.tail == nil {
-		return 0
-	}
-	return q.tail.bottom()
-}
-
-func (q *queue) shift() (id BlockID) {
-	if q.head == nil {
-		q.tail = nil
-		return
-	}
-	id = q.head.shift()
-	if id == 0 {
-		q.head.buffer = nil
-		q.head = q.head.next
-		id = q.shift()
-		return
-	}
-	return
-}
-
-func (q *queue) push(id BlockID) {
-	if q.tail == nil {
-		q.tail = node(4)
-		q.head = q.tail
-		q.tail.push(id)
-		return
-	}
-
-	if !q.tail.push(id) {
-		tail := node(min(q.head.capacity*2, 1024))
-		q.tail.next = tail
-		q.tail = tail
-		q.tail.push(id)
-		return
-	}
-}
-
-func (q *queue) unshift(id BlockID) {
-	if q.head == nil {
-		q.tail = node(4)
-		q.head = q.tail
-		q.tail.push(id)
-		return
-	}
-
-	if !q.head.unshift(id) {
-		head := node(min(q.head.capacity*2, 1024))
-		head.next = q.head
-		q.head = head
-		q.head.push(id)
-		return
 	}
 }

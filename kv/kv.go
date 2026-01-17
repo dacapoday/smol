@@ -79,8 +79,8 @@ type File = block.File
 // Type parameter F must implement File interface (*os.File or *mem.File).
 // Use DB for file-based storage.
 type KV[F File] struct {
-	bptree bptree.BPTree[*block.CRC32Heap[F], block.HeapCheckpoint]
-	block  block.CRC32Heap[F]
+	bptree bptree.BPTree[*block.Heap[F], block.HeapCheckpoint]
+	block  block.Heap[F]
 }
 
 // File returns the underlying file handle.

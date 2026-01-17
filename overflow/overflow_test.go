@@ -20,7 +20,7 @@ func TestOverflowWriteReadRecycle(t *testing.T) {
 	var f mem.File
 	file := &f
 
-	var b block.CRC32Heap[*mem.File]
+	var b block.Heap[*mem.File]
 	block := &b
 
 	_, ckpt, err := block.Load(file, option{})
@@ -55,7 +55,7 @@ func TestOverflowWriteReadRecycleSmallOverflow(t *testing.T) {
 	var f mem.File
 	file := &f
 
-	var b block.CRC32Heap[*mem.File]
+	var b block.Heap[*mem.File]
 	block := &b
 
 	_, ckpt, err := block.Load(file, option{})

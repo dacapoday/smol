@@ -6,12 +6,13 @@ package heap
 import (
 	"encoding/binary"
 	"errors"
+	"hash/crc32"
 )
 
 type Freelist []byte
 
 func freelistSize(capacity uint16) int {
-	return 4 + 4 + 4*int(capacity) + 4 // freePage(N)=head(4)+prev(4)+ids(4N)+crc(4)
+	return 4 + 4 + 4*int(capacity) + 4 // header(4) + prev(4) + ids(4N) + crc(4)
 }
 
 func freelistCapacity(size int64) uint16 {
@@ -64,4 +65,8 @@ func (freelist Freelist) Count() uint16 {
 
 func (freelist Freelist) ID(index uint16) BlockID {
 	return binary.LittleEndian.Uint32(freelist[8+index*4:])
+}
+
+func checksum(data []byte) uint32 {
+	return crc32.Checksum(data, castagnoliCrcTable)
 }

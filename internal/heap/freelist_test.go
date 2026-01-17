@@ -1,41 +1,103 @@
-// Copyright 2025 dacapoday
-// SPDX-License-Identifier: Apache-2.0
-
 package heap
 
-import (
-	"math/rand/v2"
-	"testing"
+import "testing"
 
-	"github.com/stretchr/testify/require"
-)
+func TestFreelistRoundTrip(t *testing.T) {
+	caps := []uint16{1, 10, 100, 1000}
 
-func TestFreelist(t *testing.T) {
-	var src, dst ring
+	for _, cap := range caps {
+		var src, dst ring
+		src.capacity = cap
+		dst.capacity = cap
+		src.reset()
+		dst.reset()
 
-	src.capacity = uint16(rand.Uint32N(uint32(freelistCapacity(64*1024))) + 1)
-	t.Log("capacity:", src.capacity)
+		for i := uint16(0); i < cap; i++ {
+			src.push(BlockID(i + 2))
+		}
 
-	dst.capacity = src.capacity
-	src.reset()
-	dst.reset()
+		freelist := make(Freelist, freelistSize(cap))
+		ring2freelist(&src, 42, freelist)
 
-	require.Equal(t, src.capacity, freelistCapacity(int64(freelistSize(src.capacity))))
+		if freelist.invalid() {
+			t.Fatalf("cap=%d: freelist should be valid", cap)
+		}
+		if freelist.Count() != cap {
+			t.Errorf("cap=%d: count=%d", cap, freelist.Count())
+		}
+		if freelist.Prev() != 42 {
+			t.Errorf("cap=%d: prev=%d", cap, freelist.Prev())
+		}
 
-	freelist := make(Freelist, freelistSize(src.capacity))
+		freelist2ring(freelist, &dst, freelist.Count())
 
-	for i := range src.capacity {
-		src.push(BlockID(i + 2))
+		for i := uint16(0); i < cap; i++ {
+			if src.shift() != dst.shift() {
+				t.Errorf("cap=%d: mismatch at %d", cap, i)
+				break
+			}
+		}
+	}
+}
+
+func TestFreelistInvalid(t *testing.T) {
+	freelist := make(Freelist, 100)
+
+	// uninitialized
+	if !freelist.invalid() {
+		t.Error("uninitialized should be invalid")
 	}
 
-	ring2freelist(&src, 2, freelist)
-	freelist2ring(freelist, &dst, freelist.Count())
+	// valid data
+	var r ring
+	r.capacity = 1
+	r.reset()
+	r.push(10)
+	ring2freelist(&r, 0, freelist)
 
-	require.Equal(t, src.length, freelist.Count())
-	require.Equal(t, BlockID(2), freelist.Prev())
-	require.False(t, freelist.invalid())
+	if freelist.invalid() {
+		t.Error("valid data should not be invalid")
+	}
 
-	for range src.capacity {
-		require.Equal(t, src.shift(), dst.shift())
+	// corrupt marker
+	freelist[1] = 0
+	if !freelist.invalid() {
+		t.Error("corrupted marker should be invalid")
+	}
+}
+
+func TestFreelistCapacity(t *testing.T) {
+	// verify size/capacity roundtrip
+	for _, cap := range []uint16{1, 100, 1000} {
+		size := freelistSize(cap)
+		gotCap := freelistCapacity(int64(size))
+		if gotCap != cap {
+			t.Errorf("cap=%d: size=%d -> gotCap=%d", cap, size, gotCap)
+		}
+	}
+
+	// verify capacity doesn't exceed block size
+	for _, size := range []int64{512, 4096, 65536} {
+		cap := freelistCapacity(size)
+		if int64(freelistSize(cap)) > size {
+			t.Errorf("size=%d: cap=%d exceeds", size, cap)
+		}
+	}
+}
+
+func TestFreelistID(t *testing.T) {
+	var r ring
+	r.capacity = 3
+	r.reset()
+	r.push(10)
+	r.push(20)
+	r.push(30)
+
+	freelist := make(Freelist, freelistSize(3))
+	ring2freelist(&r, 0, freelist)
+
+	// freelist stores newest first: ID(0)=30, ID(1)=20, ID(2)=10
+	if freelist.ID(0) != 30 || freelist.ID(1) != 20 || freelist.ID(2) != 10 {
+		t.Errorf("ID order: %d, %d, %d", freelist.ID(0), freelist.ID(1), freelist.ID(2))
 	}
 }

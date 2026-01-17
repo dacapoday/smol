@@ -37,7 +37,7 @@ func (kv *KV[F]) Iter() (iter Iter[F]) {
 // Iter is an iterator over a KV store snapshot.
 // Implements iterator.Iterator interface.
 type Iter[F File] struct {
-	ator bptree.Iterator[*block.CRC32Heap[F], block.HeapCheckpoint]
+	ator bptree.Iterator[*block.Heap[F], block.HeapCheckpoint]
 }
 
 // Clone creates an independent copy at current position.

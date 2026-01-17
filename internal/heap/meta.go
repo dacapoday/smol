@@ -14,8 +14,9 @@ import (
 // file headers using TLV format. It contains essential information
 // about blocks, transactions, free space management, and entry data.
 type Meta struct {
-	Entry    []byte   // Entry data content (key: 16)
-	Freelist Freelist // Serialized freelist: linked list of BlockIDs in recycle order (key: 13)
+	CodecSpec []byte   // Codec specification (key: 17)
+	Entry     []byte   // Entry data content (key: 16)
+	Freelist  Freelist // Serialized freelist: linked list of BlockIDs in recycle order (key: 13)
 
 	EntryID   BlockID // Entry data BlockID if Entry overflows Meta (key: 15)
 	EntrySize uint32  // Size of entry data (key: 14)
@@ -118,6 +119,15 @@ func decodeMeta[R io.Reader](f R, meta *Meta) (err error) {
 				return err
 			}
 			meta.Entry = val
+		case -17:
+			if val, err = d.readVal(); err != nil {
+				return
+			}
+			val, err := d.readBytes(val)
+			if err != nil {
+				return err
+			}
+			meta.CodecSpec = val
 		case 1:
 			if val, err = d.readVal(); err != nil {
 				return
@@ -154,6 +164,12 @@ func encodeMeta[W io.Writer](f W, meta *Meta) (err error) {
 	c := crc32.New(castagnoliCrcTable)
 	w := io.MultiWriter(f, c)
 	e := tlvEncoder{w}
+	if err = e.writeVal(1, uint64(meta.Version)); err != nil {
+		return
+	}
+	if err = e.writeBytes(17, meta.CodecSpec); err != nil {
+		return
+	}
 	if err = e.writeBytes(16, meta.Entry); err != nil {
 		return
 	}
@@ -272,4 +288,71 @@ func (e tlvEncoder) writeBytes(key int64, val []byte) (err error) {
 
 	_, err = e.Write(val)
 	return
+}
+
+func sizeMeta(meta *Meta) int {
+	size := sizeBytes(17, meta.CodecSpec)
+	size += sizeBytes(16, meta.Entry)
+	size += sizeBytes(13, meta.Freelist)
+	size += sizeVal(1, uint64(meta.Version))
+	size += sizeVal(5, uint64(meta.Ckp))
+	size += sizeVal(6, uint64(meta.UpdateTime))
+	size += sizeVal(7, uint64(meta.BlockSize))
+	size += sizeVal(8, uint64(meta.BlockCount))
+	size += sizeVal(9, uint64(meta.ID))
+	size += sizeVal(10, uint64(meta.PrevID))
+	size += sizeVal(11, uint64(meta.FreeRecycled))
+	size += sizeVal(12, uint64(meta.FreeTotal))
+	size += sizeVal(14, uint64(meta.EntrySize))
+	size += sizeVal(15, uint64(meta.EntryID))
+	size += 1 // terminator
+	size += 4 // CRC32
+	return size
+}
+
+func sizeVal(key int64, val uint64) int {
+	if val == 0 {
+		return 0
+	}
+	return sizeVarint(key) + sizeUvarint(val)
+}
+
+func sizeBytes(key int64, val []byte) int {
+	if val == nil {
+		return 0
+	}
+	return sizeVarint(-key) + sizeUvarint(uint64(len(val))) + len(val)
+}
+
+func sizeVarint(v int64) int {
+	uv := uint64(v) << 1
+	if v < 0 {
+		uv = ^uv
+	}
+	return sizeUvarint(uv)
+}
+
+func sizeUvarint(v uint64) int {
+	switch {
+	case v < 1<<7:
+		return 1
+	case v < 1<<14:
+		return 2
+	case v < 1<<21:
+		return 3
+	case v < 1<<28:
+		return 4
+	case v < 1<<35:
+		return 5
+	case v < 1<<42:
+		return 6
+	case v < 1<<49:
+		return 7
+	case v < 1<<56:
+		return 8
+	case v < 1<<63:
+		return 9
+	default:
+		return 10
+	}
 }

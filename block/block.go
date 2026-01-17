@@ -28,4 +28,4 @@ func checksum(data []byte) uint32 {
 	return crc32.Checksum(data, castagnoliCrcTable)
 }
 
-var _ smol.Block[HeapCheckpoint] = (*CRC32Heap[File])(nil)
+var _ smol.Block[HeapCheckpoint] = (*Heap[File])(nil)

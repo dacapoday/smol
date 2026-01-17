@@ -13,7 +13,7 @@ import (
 func TestWriteRootPageSinglePage(t *testing.T) {
 	// Setup block storage
 	var f mem.File
-	var b block.CRC32Heap[*mem.File]
+	var b block.Heap[*mem.File]
 
 	_, ckpt, err := b.Load(&f, option{})
 	if err != nil {
@@ -54,7 +54,7 @@ func TestWriteRootPageSinglePage(t *testing.T) {
 func TestWriteRootPageMultiplePages(t *testing.T) {
 	// Setup block storage
 	var f mem.File
-	var b block.CRC32Heap[*mem.File]
+	var b block.Heap[*mem.File]
 
 	_, ckpt, err := b.Load(&f, option{})
 	if err != nil {
@@ -94,7 +94,7 @@ func TestWriteRootPageMultiplePages(t *testing.T) {
 func TestWriteRootPageEmpty(t *testing.T) {
 	// Setup block storage
 	var f mem.File
-	var b block.CRC32Heap[*mem.File]
+	var b block.Heap[*mem.File]
 
 	_, ckpt, err := b.Load(&f, option{})
 	if err != nil {
