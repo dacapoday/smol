@@ -16,10 +16,7 @@ import (
 // sortedChanges must yield key-value pairs in ascending lexicographic order.
 // A nil value indicates deletion of the key. All yielded keys and values must
 // remain valid until the function returns, not just during iteration.
-//
-// maxLoadedPages limits the number of pages loaded at once. When hit, changes are
-// split into batches to control memory use.
-func WriteSortedChanges[B ReadWrite, R RootBlock](block B, root R, sortedChanges func(func([]byte, []byte) bool), maxLoadedPages uint32) (high uint8, rootPage Page, err error) {
+func WriteSortedChanges[B ReadWrite, R RootBlock](block B, root R, sortedChanges func(func([]byte, []byte) bool)) (high uint8, page Page, err error) {
 	writer := itemWriter[B]{block: block}
 	writer.keyInlineSize = root.KeyInlineSize()
 	writer.valInlineSize = root.ValInlineSize()
@@ -74,7 +71,7 @@ func WriteSortedChanges[B ReadWrite, R RootBlock](block B, root R, sortedChanges
 				return 0, nil, writer.err
 			}
 			if !writer.last && writer.index == writer.list.tail.page.tail.end {
-				if writer.loaded() > maxLoadedPages {
+				if block.BufferPressured(writer.loaded()) {
 					writer.flush()
 					if writer.err != nil {
 						return 0, nil, writer.err
@@ -101,8 +98,18 @@ func WriteSortedChanges[B ReadWrite, R RootBlock](block B, root R, sortedChanges
 		return 0, nil, err
 	}
 
+	if o, ok := any(root).(MakePage); ok {
+		return writeBranch(
+			block,
+			o.MakePage,
+			writer.root.high, writer.root.page,
+			writer.pages, writer.list.head,
+		)
+	}
+
 	return writeBranch(
 		block,
+		makePage,
 		writer.root.high, writer.root.page,
 		writer.pages, writer.list.head,
 	)
@@ -131,9 +138,11 @@ type itemWriter[B ReadWrite] struct {
 	buf []byte
 }
 
-func (writer *itemWriter[B]) loaded() uint32 {
-	return uint32(len(writer.pages)) + uint32(writer.root.high)
+func (writer *itemWriter[B]) loaded() int {
+	return len(writer.pages) + int(writer.root.high)
 }
+
+func makePage(size int) []byte { return make([]byte, size) }
 
 func (writer *itemWriter[B]) flush() {
 	writer.err = writer.wait()
@@ -143,6 +152,7 @@ func (writer *itemWriter[B]) flush() {
 
 	writer.root.high, writer.root.page, writer.err = writeBranch(
 		writer.block,
+		makePage,
 		writer.root.high, writer.root.page,
 		writer.pages, writer.list.head.next,
 	)
@@ -364,24 +374,24 @@ func (writer *itemWriter[B]) extend() (item *leafItem) {
 	return
 }
 
-func writeBranch[B ReadWrite](block B, high uint8, root Page, pages pages, leaf *leafNode) (uint8, Page, error) {
+func writeBranch[B ReadWrite](block B, makePage func(int) []byte, high uint8, root Page, pages pages, leaf *leafNode) (uint8, Page, error) {
 	if leaf == nil {
 		// if high == 0 {
-		// 	return writeRoot(block, high, root.LeafItems(0, root.Count()))
+		// 	return writeRoot(block, makePage, high, root.LeafItems(0, root.Count()))
 		// }
-		return writeRoot(block, high, root.BranchItems(0, root.Count()))
+		return writeRoot(block, makePage, high, root.BranchItems(0, root.Count()))
 	}
 
 	if len(leaf.level) < 2 {
 		if len(leaf.level) == 0 {
-			return writeRoot(block, 0, LeafItems(leaf.items))
+			return writeRoot(block, makePage, 0, LeafItems(leaf.items))
 		}
 
 		page, err := writeRootNodes(block, root, leaf)
 		if err != nil {
 			return 0, nil, err
 		}
-		return writeRoot(block, 1, BranchItems(page.items))
+		return writeRoot(block, makePage, 1, BranchItems(page.items))
 	}
 
 	branch, err := writeBranchNodes(block, pages, leaf)
@@ -389,7 +399,7 @@ func writeBranch[B ReadWrite](block B, high uint8, root Page, pages pages, leaf 
 		return 0, nil, err
 	}
 	if len(branch.level) == 0 {
-		return writeRoot(block, 1, BranchItems(branch.items))
+		return writeRoot(block, makePage, 1, BranchItems(branch.items))
 	}
 
 	for high = 1; len(branch.level) > 1; high++ {
@@ -399,7 +409,7 @@ func writeBranch[B ReadWrite](block B, high uint8, root Page, pages pages, leaf 
 		}
 		if len(branch.level) == 0 {
 			high++
-			return writeRoot(block, high, BranchItems(branch.items))
+			return writeRoot(block, makePage, high, BranchItems(branch.items))
 		}
 	}
 
@@ -408,7 +418,7 @@ func writeBranch[B ReadWrite](block B, high uint8, root Page, pages pages, leaf 
 		return 0, nil, err
 	}
 	high++
-	return writeRoot(block, high, BranchItems(page.items))
+	return writeRoot(block, makePage, high, BranchItems(page.items))
 }
 
 func writeRootNodes[

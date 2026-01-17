@@ -12,10 +12,11 @@ import (
 
 // Iterator creates a new iterator over the B+ tree.
 // The iterator holds a snapshot and must be closed when done.
-func (bptree *BPTree[B, C]) Iterator() (iter Iterator[B, C]) {
-	iter.ator = new(ator[B, C])
-	if root := bptree.AcquireRoot(); root != nil {
-		iter.ator.Load(bptree.block, root)
+func (bptree *BPTree[B, C]) Iterator() (iter *Iterator[B, C]) {
+	iter = new(Iterator[B, C])
+	if ckpt, root := bptree.atom.Acquire(); root != nil {
+		iter.ator.Load(bptree.atom.Block(), root)
+		iter.ckpt = ckpt
 	}
 	return
 }
@@ -23,25 +24,28 @@ func (bptree *BPTree[B, C]) Iterator() (iter Iterator[B, C]) {
 // Iterator provides ordered iteration over B+ tree entries with snapshot isolation.
 // It embeds Reader and implements the iterator.Iterator interface.
 type Iterator[B ReadOnly, C Checkpoint] struct {
-	*ator[B, C]
+	ckpt C
+	ator[B]
 }
 
-type ator[B ReadOnly, C Checkpoint] = Reader[B, *Root[C]]
+type ator[B ReadOnly] = Reader[B, *Root]
 
 // Clone creates an independent copy at current position.
-func (iter Iterator[B, C]) Clone() (newIter Iterator[B, C]) {
-	newIter.ator = new(ator[B, C])
+func (iter *Iterator[B, C]) Clone() (newIter *Iterator[B, C]) {
+	newIter = new(Iterator[B, C])
 	if root := iter.ator.Root(); root != nil {
-		root.Checkpoint().Acquire()
-		newIter.ator.LoadFrom(iter.ator)
+		iter.ckpt.Acquire()
+		newIter.ator.LoadFrom(&iter.ator)
 	}
 	return
 }
 
 // Close releases resources held by the iterator.
-func (iter Iterator[B, C]) Close() {
+func (iter *Iterator[B, C]) Close() {
 	if root := iter.ator.Root(); root != nil {
-		root.Checkpoint().Release()
+		iter.ckpt.Release()
+		var nilCkpt C
+		iter.ckpt = nilCkpt
 		iter.ator.Close()
 	}
 }

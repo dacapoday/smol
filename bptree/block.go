@@ -7,7 +7,10 @@ import "github.com/dacapoday/smol"
 
 type BlockID = smol.BlockID
 type Block[C Checkpoint] = smol.Block[C]
-type Checkpoint = smol.Checkpoint
+type Checkpoint = interface {
+	comparable
+	smol.Checkpoint
+}
 type ReadWrite = smol.ReadWrite
 type ReadOnly = smol.ReadOnly
 
@@ -24,4 +27,8 @@ type RootBlock interface {
 
 	// ValInlineSize returns maximum inline value size in a page.
 	ValInlineSize() int
+}
+
+type MakePage interface {
+	MakePage(size int) []byte
 }

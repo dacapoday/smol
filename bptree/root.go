@@ -5,8 +5,8 @@ package bptree
 
 import "iter"
 
-func writeRoot[B ReadWrite, V BlockID | []byte, Items items[V]](block B, h uint8, items Items) (high uint8, root Page, err error) {
-	root, branch, err := writeRootPage(block, items)
+func writeRoot[B ReadWrite, V BlockID | []byte, Items items[V]](block B, makePage func(int) []byte, h uint8, items Items) (high uint8, root Page, err error) {
+	root, branch, err := writeRootPage(block, makePage, items)
 	if err != nil {
 		return
 	}
@@ -14,7 +14,7 @@ func writeRoot[B ReadWrite, V BlockID | []byte, Items items[V]](block B, h uint8
 		return
 	}
 	for high = h; branch != nil; high++ {
-		root, branch, err = writeRootPage(block, branch)
+		root, branch, err = writeRootPage(block, makePage, branch)
 		if err != nil {
 			return
 		}
@@ -22,7 +22,7 @@ func writeRoot[B ReadWrite, V BlockID | []byte, Items items[V]](block B, h uint8
 	return
 }
 
-func writeRootPage[B ReadWrite, V BlockID | []byte, Items items[V]](block B, items Items) (root Page, branch BranchItems, err error) {
+func writeRootPage[B ReadWrite, V BlockID | []byte, Items items[V]](block B, makePage func(int) []byte, items Items) (root Page, branch BranchItems, err error) {
 	next, stop := layout(items, block.PageSize())
 	defer stop()
 	size, items, last := next()
@@ -30,7 +30,7 @@ func writeRootPage[B ReadWrite, V BlockID | []byte, Items items[V]](block B, ite
 		return
 	}
 	if last {
-		root = make(Page, size)
+		root = makePage(size)
 		items.encode(root)
 		return
 	}
