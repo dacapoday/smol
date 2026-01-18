@@ -1,62 +1,126 @@
 package heap
 
-import "testing"
+import (
+	"testing"
+)
+
+func TestRingEmpty(t *testing.T) {
+	var r ring
+	r.capacity = 7
+	r.reset()
+
+	if !r.empty() {
+		t.Error("new ring should be empty")
+	}
+	if r.full() {
+		t.Error("new ring should not be full")
+	}
+
+	id := r.shift()
+	if id != 0 {
+		t.Errorf("shift from empty ring should return 0, got %d", id)
+	}
+}
 
 func TestRingPushShift(t *testing.T) {
 	var r ring
-	r.capacity = 5
+	r.capacity = 7
 	r.reset()
 
-	// push until full
-	for i := BlockID(1); i <= 5; i++ {
-		if !r.push(i) {
-			t.Fatalf("push %d failed", i)
+	ids := []BlockID{11, 12, 13, 14, 15, 16, 17}
+
+	for _, id := range ids {
+		if !r.push(id) {
+			t.Fatalf("failed to push %d", id)
 		}
 	}
-	if !r.full() || r.push(6) {
-		t.Error("should be full")
+
+	if r.empty() {
+		t.Error("ring should not be empty")
+	}
+	if !r.full() {
+		t.Error("ring should be full")
 	}
 
-	// shift all, verify FIFO
-	for i := BlockID(1); i <= 5; i++ {
-		if got := r.shift(); got != i {
-			t.Errorf("shift: got %d, want %d", got, i)
+	if r.push(18) {
+		t.Error("push to full ring should fail")
+	}
+
+	for _, expected := range ids {
+		got := r.shift()
+		if got != expected {
+			t.Errorf("expected %d, got %d", expected, got)
 		}
 	}
-	if !r.empty() || r.shift() != 0 {
-		t.Error("should be empty")
+
+	if !r.empty() {
+		t.Error("ring should be empty after all shifts")
 	}
 
-	// wrap around: push again after shift
-	for i := BlockID(10); i <= 14; i++ {
-		r.push(i)
+	got := r.shift()
+	if got != 0 {
+		t.Errorf("shift from empty ring should return 0, got %d", got)
 	}
-	for i := BlockID(10); i <= 14; i++ {
-		if got := r.shift(); got != i {
-			t.Errorf("wrap: got %d, want %d", got, i)
+}
+
+func TestRingWrapAround(t *testing.T) {
+	var r ring
+	r.capacity = 7
+	r.reset()
+
+	ids := []BlockID{11, 12, 13, 14, 15, 16, 17}
+
+	for _, id := range ids {
+		r.push(id)
+	}
+
+	for _, expected := range ids {
+		got := r.shift()
+		if got != expected {
+			t.Errorf("expected %d, got %d", expected, got)
+		}
+	}
+
+	for _, id := range ids {
+		if !r.push(id) {
+			t.Fatalf("failed to push %d on second round", id)
+		}
+	}
+
+	for _, expected := range ids {
+		got := r.shift()
+		if got != expected {
+			t.Errorf("second round: expected %d, got %d", expected, got)
 		}
 	}
 }
 
 func TestRingUnshift(t *testing.T) {
 	var r ring
-	r.capacity = 5
+	r.capacity = 7
 	r.reset()
 
-	// unshift reverses order
-	for i := BlockID(1); i <= 5; i++ {
-		if !r.unshift(i) {
-			t.Fatalf("unshift %d failed", i)
+	ids := []BlockID{11, 12, 13, 14, 15, 16, 17}
+
+	for _, id := range ids {
+		if !r.unshift(id) {
+			t.Fatalf("failed to unshift %d", id)
 		}
 	}
-	if !r.full() || r.unshift(6) {
-		t.Error("should be full")
+
+	if !r.full() {
+		t.Error("ring should be full")
 	}
 
-	// shift returns reverse order: 5, 4, 3, 2, 1
-	for i := BlockID(5); i >= 1; i-- {
-		if got := r.shift(); got != i {
-			t.Errorf("got %d, want %d", got, i)
+	if r.unshift(18) {
+		t.Error("unshift to full ring should fail")
+	}
+
+	for i := len(ids) - 1; i >= 0; i-- {
+		expected := ids[i]
+		got := r.shift()
+		if got != expected {
+			t.Errorf("expected %d, got %d", expected, got)
 		}
 	}
 }
