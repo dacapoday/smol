@@ -118,3 +118,45 @@ func TestPlainEntryPageSizeRoundTrip(t *testing.T) {
 	heap2.Close()
 }
 
+func TestPlainEntryBlockSizeRoundTrip(t *testing.T) {
+	file := new(mem.File)
+	opt := testOption{
+		magicCode:         [4]byte{'p', 'l', 'p', 's'},
+		retainCheckpoints: 3,
+		cipherSuite:       "plain",
+	}
+
+	var heap Heap[*mem.File]
+	_, ckpt, err := heap.Load(file, opt)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	ckpt.Release()
+
+	entry := make([]byte, heap.BlockSize())
+	for i := range entry {
+		entry[i] = byte(i % 256)
+	}
+
+	_, ckpt, err = heap.Commit(entry)
+	if err != nil {
+		t.Fatalf("Commit failed: %v", err)
+	}
+	ckpt.Release()
+
+	var backup bytes.Buffer
+	file.WriteTo(&backup)
+	heap.Close()
+
+	file.ReadFrom(&backup)
+	var heap2 Heap[*mem.File]
+	meta, ckpt, err := heap2.Load(file, opt)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if !bytes.Equal(meta.Entry, entry) {
+		t.Errorf("entry mismatch at pageSize boundary")
+	}
+	ckpt.Release()
+	heap2.Close()
+}

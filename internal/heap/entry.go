@@ -60,7 +60,7 @@ func loadPlainEntry(r io.ReaderAt, meta *Meta) (err error) {
 		return
 	}
 	if entry[1] == 0 && entry[0] == 0 {
-		if int(binary.LittleEndian.Uint16(entry[2:4]))+8 == len(entry) {
+		if int(binary.LittleEndian.Uint16(entry[2:4]))+4 == entrySize {
 			if binary.LittleEndian.Uint32(entry[entrySize:]) == checksum(entry[:entrySize]) {
 				copy(entry[entrySize:], meta.Entry)
 				meta.Entry = entry[4 : entrySize+len(meta.Entry)]

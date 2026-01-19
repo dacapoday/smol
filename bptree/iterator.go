@@ -15,8 +15,8 @@ import (
 func (bptree *BPTree[B, C]) Iterator() (iter *Iterator[B, C]) {
 	iter = new(Iterator[B, C])
 	if root, ckpt := bptree.atom.Acquire(); root != nil {
-		iter.ator.Load(bptree.atom.Block(), root)
 		iter.ckpt = ckpt
+		iter.ator.Load(bptree.atom.Block(), root)
 	}
 	return
 }
@@ -35,6 +35,7 @@ func (iter *Iterator[B, C]) Clone() (newIter *Iterator[B, C]) {
 	newIter = new(Iterator[B, C])
 	if root := iter.ator.Root(); root != nil {
 		iter.ckpt.Acquire()
+		newIter.ckpt = iter.ckpt
 		newIter.ator.LoadFrom(&iter.ator)
 	}
 	return
