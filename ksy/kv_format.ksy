@@ -230,12 +230,12 @@ types:
         value: length / 4 - 1
   overflow_head:
     seq:
+      - id: front
+        size-eos: true
       - id: size
         type: uvarint
       - id: id
         type: u4
-      - id: front
-        size-eos: true
 enums:
   meta:
     0: end

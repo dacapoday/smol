@@ -93,6 +93,8 @@ func (heap *Heap[F]) saveEntry(meta *Meta) (err error) {
 		offset := len(entry) - overflow
 		meta.Entry = entry[:offset]
 		entry = entry[offset:]
+	} else {
+		meta.Entry = nil
 	}
 
 	copy(buffer[4:], entry)
@@ -110,6 +112,8 @@ func (heap *Heap[F]) savePlainEntry(meta *Meta) (err error) {
 	if overflow := len(buffer) - 8; len(entry) > overflow {
 		meta.Entry = entry[overflow:]
 		entry = entry[:overflow]
+	} else {
+		meta.Entry = nil
 	}
 
 	copy(buffer[4:], entry)
