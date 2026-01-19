@@ -40,36 +40,3 @@ func (page Page) OverflowID() BlockID {
 func (page Page) OverflowTail() []byte {
 	return page[HeadSize:page.Size()]
 }
-
-func sizeUvarint(x int) (size int) {
-	switch {
-	case x < 128: // 1<<7
-		return 1
-	case x < 16384: // 1<<14
-		return 2
-	case x < 2097152: // 1<<21
-		return 3
-	case x < 268435456: // 1<<28
-		return 4
-	case x < 34359738368: // 1<<35
-		return 5
-	case x < 4398046511104: // 1<<42
-		return 6
-	case x < 562949953421312: // 1<<49
-		return 7
-	case x < 72057594037927936: // 1<<56
-		return 8
-	default:
-		return 9
-	}
-}
-
-// func sizeUvarint(x uint64) (size uint64) {
-// 	for {
-// 		size++
-// 		x >>= 7
-// 		if x == 0 {
-// 			return
-// 		}
-// 	}
-// }

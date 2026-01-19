@@ -17,7 +17,7 @@ import (
 // For best performance, keep them within inline size limits from
 // root.KeyInlineSize() and root.ValInlineSize(). Larger entries use overflow storage.
 type BPTree[B Block[C], C Checkpoint] struct {
-	atom atom.Ref[B, C, *Root]
+	atom atom.Atom[B, C, *Root]
 }
 
 func (bptree *BPTree[B, C]) Block() B {
@@ -36,7 +36,7 @@ func (bptree *BPTree[B, C]) Close() (err error) {
 // Returns nil if key does not exist.
 // Returned value is safe to modify.
 func (bptree *BPTree[B, C]) Get(key []byte) (val []byte, err error) {
-	ckpt, root := bptree.atom.Acquire()
+	root, ckpt := bptree.atom.Acquire()
 	var nilCkpt C
 	if ckpt == nilCkpt {
 		err = ErrClosed
@@ -83,8 +83,7 @@ func (bptree *BPTree[B, C]) CommitSortedChanges(sortedChanges func(func([]byte, 
 // AcquireRoot returns a snapshot of the current root with an acquired reference.
 // The caller must call Release on the checkpoint when done.
 func (bptree *BPTree[B, C]) AcquireRoot() (root *Root, ckpt C) {
-	ckpt, root = bptree.atom.Acquire()
-	return
+	return bptree.atom.Acquire()
 }
 
 // Root represents a snapshot of the B+ tree root metadata.

@@ -58,7 +58,7 @@ func (ckpt *checkpoint) Release() {
 }
 
 func (ckpt *checkpoint) Valid() bool {
-	return ckpt.ref.Load() > 0
+	return ckpt.ref.Load() > 1
 }
 
 func (heap *Heap[F]) PageSize() int {
@@ -184,9 +184,12 @@ func (heap *Heap[F]) Close() error {
 	heap.mutex.Lock()
 	defer heap.mutex.Unlock()
 
-	heap.tail, heap.base, heap.head = nil, nil, nil // TODO: check checkpoint leak reduce ref count
+	for cur := heap.head; cur != nil; cur = cur.next {
+		cur.ref.Store(0)
+	}
+	heap.tail, heap.base, heap.head = nil, nil, nil
 	heap.free = free{}
-	heap.codec.close()
+	heap.codec = codec{}
 	heap.buffer = nil
 	return heap.block.close()
 }
@@ -253,8 +256,29 @@ func (heap *Heap[F]) ReadAt(buffer []byte, blockID BlockID) (int, error) {
 }
 
 func (heap *Heap[F]) WriteBlock(blockID BlockID, buffer []byte) (err error) {
+	if blockID < 2 {
+		panic(errors.New("blockID < 2"))
+	}
+
+	if phase := heap.phase.Load(); phase != readwrite {
+		if phase == readyonly {
+			err = ErrReadOnly
+			return
+		}
+		if phase == nil {
+			err = ErrClosed
+			return
+		}
+		err = phase.error
+		return
+	}
+
 	heap.codec.encode(buffer, blockID)
-	_, err = heap.WriteAt(buffer, blockID)
+
+	if _, err = heap.block.writeAt(buffer, blockID); err != nil {
+		err = fmt.Errorf("write block(%d) failed: %w", blockID, err)
+		heap.phase.CompareAndSwap(readwrite, &phase{err})
+	}
 	return
 }
 
@@ -419,7 +443,7 @@ func (heap *Heap[F]) Commit(entry []byte) (meta *Meta, ckpt Checkpoint, err erro
 	meta.Entry = heap.codec.encodeEntry(entry)
 
 	blockSize := int(heap.block.size)
-	if blockSize >= 4+sizeMeta(meta) {
+	if blockSize >= len(meta.Entry)+freelistSize(heap.free.tail.length)+74 {
 		if err = heap.save(meta); !errors.Is(err, ErrOutOfRange) {
 			if err != nil {
 				err = fmt.Errorf("save meta(%d) failed: %w", meta.Ckp%2, err)

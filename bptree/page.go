@@ -272,6 +272,28 @@ func b2s(b []byte) string {
 	return unsafe.String(unsafe.SliceData(b), len(b))
 }
 
+// Overflow decodes overflow metadata from data.
+// Format: [head:inlineSize][overflowSize:uvarint][overflowID:4bytes]
+// Returns head (inline portion), overflowSize, and overflowID.
+func Overflow(head []byte, inlineSize int) (front []byte, overflowSize int, overflowID BlockID) {
+	front = head[:inlineSize]
+	size, slen := binary.Uvarint(head[inlineSize:])
+	overflowSize = int(size)
+	overflowID = binary.LittleEndian.Uint32(head[inlineSize+slen:])
+	return
+}
+
+func overflowID(head []byte) BlockID {
+	return binary.LittleEndian.Uint32(head[len(head)-4:])
+}
+
+func overflowHead(front []byte, overflowSize int, overflowID BlockID) (head []byte) {
+	head = make([]byte, 0, len(front)+sizeUvarint(overflowSize)+4)
+	head = append(head, front...)
+	head = binary.AppendUvarint(head, uint64(overflowSize))
+	return binary.LittleEndian.AppendUint32(head, overflowID)
+}
+
 // InlineSize calculates the maximum inline sizes for keys and values in a page.
 // Parameters:
 //   - pageSize: the size of a page in bytes

@@ -26,7 +26,7 @@ func TestWriteRootPageSinglePage(t *testing.T) {
 	items := newMockLeafItems(5, 8, 16)
 
 	// Call writeRootPage
-	root, branch, err := writeRootPage(&b, items)
+	root, branch, err := writeRootPage(&b, makePage, items)
 	if err != nil {
 		t.Fatalf("writeRootPage failed: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestWriteRootPageMultiplePages(t *testing.T) {
 	items := newMockLeafItems(20, 16, 36) // assume page size is 512
 
 	// Call writeRootPage
-	root, branch, err := writeRootPage(&b, items)
+	root, branch, err := writeRootPage(&b, makePage, items)
 	if err != nil {
 		t.Fatalf("writeRootPage failed: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestWriteRootPageEmpty(t *testing.T) {
 	items := newMockLeafItems(0, 8, 16)
 
 	// Call writeRootPage
-	root, branch, err := writeRootPage(&b, items)
+	root, branch, err := writeRootPage(&b, makePage, items)
 	if err != nil {
 		t.Fatalf("writeRootPage failed: %v", err)
 	}

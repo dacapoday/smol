@@ -97,7 +97,12 @@ func (kv *KV[F]) Load(file F) (err error) {
 		return
 	}
 
-	err = kv.bptree.Load(&kv.block, entry, ckpt)
+	root, err := bptree.LoadRoot(&kv.block, entry)
+	if err != nil {
+		return
+	}
+
+	kv.bptree.Load(&kv.block, ckpt, root)
 	return
 }
 
@@ -155,9 +160,5 @@ func (kv *KV[F]) Batch(changes func(yield func([]byte, []byte) bool)) error {
 	for k, v := range changes {
 		batch.Set(k, v)
 	}
-	return kv.commit(batch.Items)
-}
-
-func (kv *KV[F]) commit(sortedChanges func(func([]byte, []byte) bool)) error {
-	return kv.bptree.CommitSortedChanges(sortedChanges, 4096) // 64 MiB write buffer limit
+	return kv.bptree.CommitSortedChanges(batch.Items)
 }

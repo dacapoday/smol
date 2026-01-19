@@ -4,35 +4,21 @@ package overflow
 
 import "encoding/binary"
 
-// Head decodes the overflow header.
-// Returns data head, overflow size, and next block ID.
-func Head(head []byte) (front []byte, overflowSize int, overflowID BlockID) {
-	size, slen := binary.Uvarint(head)
-	if slen <= 0 {
-		return
-	}
-	front = head[slen+4:]
-	overflowSize = int(size)
-	overflowID = binary.LittleEndian.Uint32(head[slen:])
-	return
-}
-
 // Read reads complete data from block using head.
 // Reuses buf if it has enough capacity; otherwise allocates new buffer.
 // Returns complete data in body.
-func Read[B ReadOnly](block B, buf []byte, head []byte) (body []byte, err error) {
-	front, overflowSize, overflowID := Head(head)
+func Read[B ReadOnly](block B, buf []byte, head []byte, overflowSize int, overflowID BlockID) (body []byte, err error) {
 	if overflowID < 2 {
 		err = ErrInvalidOverflowHead
 		return
 	}
 
-	if size := len(front) + overflowSize; cap(buf) < size {
+	if size := len(head) + overflowSize; cap(buf) < size {
 		buf = make([]byte, 0, size)
 	} else {
 		buf = buf[:0]
 	}
-	buf = append(buf, front...)
+	buf = append(buf, head...)
 
 	buffer := block.AllocateBuffer()
 	defer block.RecycleBuffer(buffer)
@@ -47,7 +33,7 @@ func Read[B ReadOnly](block B, buf []byte, head []byte) (body []byte, err error)
 		buf = append(buf, page.OverflowBody()...)
 		overflowID = page.OverflowID()
 		if overflowID < 2 {
-			err = ErrInvalidOverflowPage
+			overflowID = 1
 			return
 		}
 	}
@@ -57,50 +43,54 @@ func Read[B ReadOnly](block B, buf []byte, head []byte) (body []byte, err error)
 			return
 		}
 		if overflowID < 2 {
+			if overflowID == 1 {
+				err = ErrInvalidOverflowPage
+			}
 			return
 		}
 	}
 }
 
-// Recycle frees overflow blocks using head.
-func Recycle[B ReadWrite](block B, head []byte) (err error) {
-	_, _, overflowID := Head(head)
-
+// Recycle frees overflow blocks using overflowID.
+func Recycle[B ReadWrite](block B, overflowID BlockID) (err error) {
 	buffer := block.AllocateBuffer()
 	defer block.RecycleBuffer(buffer)
 
-	recycle := func(block []byte) {
-		page := Page(block)
+	var nextID BlockID
+	recycle := func(buf []byte) {
+		page := Page(buf)
 		if page.IsOverflowTail() {
-			overflowID = 0
+			nextID = 0
 			return
 		}
-		overflowID = page.OverflowID()
-		if overflowID < 2 {
+
+		nextID = page.OverflowID()
+		if nextID < 2 {
 			err = ErrInvalidOverflowPage
-			return
 		}
 	}
 
-	for {
-		if overflowID < 2 {
+	for overflowID > 1 {
+		if e := block.ReadBlock(overflowID, buffer, recycle); e != nil {
+			err = e
 			return
 		}
 		block.RecycleBlock(overflowID)
-
-		if err = block.ReadBlock(overflowID, buffer, recycle); err != nil {
-			return
-		}
+		overflowID = nextID
 	}
+	return
 }
 
 // Write writes body to blocks and returns the encoded head.
 // The inlineSize parameter specifies how many bytes to keep in head; the rest overflows to blocks.
-func Write[B ReadWrite](block B, body []byte, inlineSize int) (head []byte, err error) {
-	// inlineSize = min(max(0, inlineSize), len(body))
-	front := body[:inlineSize]
+func Write[B ReadWrite](block B, body []byte, inlineSize int) (head []byte, overflowSize int, overflowID BlockID, err error) {
+	head = body[:inlineSize]
 	rest := body[inlineSize:]
-	overflowSize := len(rest)
+	overflowSize = len(rest)
+	if overflowSize == 0 {
+		return
+	}
+
 	bodySize := block.PageSize() - HeadSize - 4
 	tailSize := overflowSize % bodySize
 	if tailSize <= 4 && overflowSize > tailSize {
@@ -113,7 +103,7 @@ func Write[B ReadWrite](block B, body []byte, inlineSize int) (head []byte, err 
 	beg := overflowSize - tailSize
 	encodeTailPage(buffer, rest[beg:])
 
-	overflowID := block.AllocateBlock()
+	overflowID = block.AllocateBlock()
 	if overflowID < 2 {
 		err = errAllocateFailed(block)
 		return
@@ -138,11 +128,6 @@ func Write[B ReadWrite](block B, body []byte, inlineSize int) (head []byte, err 
 			return
 		}
 	}
-
-	head = make([]byte, sizeUvarint(overflowSize)+4+len(front))
-	n := binary.PutUvarint(head, uint64(overflowSize))
-	binary.LittleEndian.PutUint32(head[n:], overflowID)
-	copy(head[n+4:], front)
 	return
 }
 

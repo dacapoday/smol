@@ -14,7 +14,7 @@ import (
 // The iterator holds a snapshot and must be closed when done.
 func (bptree *BPTree[B, C]) Iterator() (iter *Iterator[B, C]) {
 	iter = new(Iterator[B, C])
-	if ckpt, root := bptree.atom.Acquire(); root != nil {
+	if root, ckpt := bptree.atom.Acquire(); root != nil {
 		iter.ator.Load(bptree.atom.Block(), root)
 		iter.ckpt = ckpt
 	}
@@ -76,13 +76,15 @@ func (reader *Reader[B, R]) Key() (key []byte) {
 		return
 	}
 	key = reader.page.LeafKey(reader.index)
-	if len(key) > reader.root.KeyInlineSize() {
+	keyInlineSize := reader.root.KeyInlineSize()
+	if len(key) > keyInlineSize {
 		if len(reader.key) != 0 {
 			key = reader.key
 			return
 		}
+		head, overflowSize, overflowID := Overflow(key, keyInlineSize)
 		var err error
-		key, err = overflow.Read(reader.block, reader.key, key)
+		key, err = overflow.Read(reader.block, reader.key, head, overflowSize, overflowID)
 		if err != nil {
 			reader.err = err
 			return
@@ -100,13 +102,15 @@ func (reader *Reader[B, R]) Val() (val []byte) {
 		return
 	}
 	val = reader.page.LeafVal(reader.index)
-	if len(val) > reader.root.ValInlineSize() {
+	valInlineSize := reader.root.ValInlineSize()
+	if len(val) > valInlineSize {
 		if len(reader.val) != 0 {
 			val = reader.val
 			return
 		}
+		head, overflowSize, overflowID := Overflow(val, valInlineSize)
 		var err error
-		val, err = overflow.Read(reader.block, reader.val, val)
+		val, err = overflow.Read(reader.block, reader.val, head, overflowSize, overflowID)
 		if err != nil {
 			reader.err = err
 			return
@@ -462,7 +466,8 @@ func (cursor *cursor[B, R]) leaf(i uint16) int {
 		if cursor.err != nil {
 			return 0
 		}
-		leafKey, cursor.err = overflow.Read(cursor.block, cursor.Reader.key, leafKey)
+		head, overflowSize, overflowID := Overflow(leafKey, cursor.keyInlineSize)
+		leafKey, cursor.err = overflow.Read(cursor.block, cursor.Reader.key, head, overflowSize, overflowID)
 		if cursor.err != nil {
 			return 0
 		}
@@ -485,7 +490,8 @@ func (cursor *cursor[B, R]) branch(i uint16) int {
 		if cursor.err != nil {
 			return 0
 		}
-		branchKey, cursor.err = overflow.Read(cursor.block, cursor.Reader.key, branchKey)
+		head, overflowSize, overflowID := Overflow(branchKey, cursor.keyInlineSize)
+		branchKey, cursor.err = overflow.Read(cursor.block, cursor.Reader.key, head, overflowSize, overflowID)
 		if cursor.err != nil {
 			return 0
 		}

@@ -21,7 +21,7 @@ func (codec *codec) load(file io.ReaderAt, opt Option, meta *Meta) (err error) {
 	codec.spec = meta.CodecSpec
 	defer func() {
 		if err != nil {
-			codec.aead = plainAEAD{castagnoliCrcTable}
+			codec.aead = nil
 			codec.spec = nil
 		}
 	}()
@@ -71,7 +71,7 @@ func (codec *codec) init(file io.WriterAt, opt Option) (meta *Meta, err error) {
 	var blockCount uint32 = 2
 	defer func() {
 		if err != nil {
-			codec.aead = plainAEAD{castagnoliCrcTable}
+			codec.aead = nil
 			codec.spec = nil
 			return
 		}
@@ -118,11 +118,6 @@ func (codec *codec) init(file io.WriterAt, opt Option) (meta *Meta, err error) {
 	}
 	err = fmt.Errorf("%w: %s", ErrInvalidCipherSuite, suite)
 	return
-}
-
-func (codec *codec) close() {
-	codec.aead = plainAEAD{castagnoliCrcTable}
-	codec.spec = nil
 }
 
 func (codec *codec) size() int { // at least 4

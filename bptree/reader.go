@@ -3,6 +3,8 @@
 
 package bptree
 
+import "github.com/dacapoday/smol/overflow"
+
 // Reader provides cursor-based traversal of B+ tree items.
 type Reader[B ReadOnly, R RootBlock] struct {
 	block    B
@@ -114,4 +116,92 @@ func (reader *Reader[B, R]) prev() bool {
 	}
 	reader.index--
 	return true
+}
+
+// KeyStr returns the current key as string, or empty if invalid.
+func (reader *Reader[B, R]) KeyStr() string {
+	return b2s(reader.Key())
+}
+
+// ValStr returns the current value as string, or empty if invalid.
+func (reader *Reader[B, R]) ValStr() string {
+	return b2s(reader.Val())
+}
+
+// InlineKey returns the key bytes stored directly in the page slot.
+func (reader *Reader[B, R]) InlineKey() (key []byte) {
+	if reader.err != null {
+		return
+	}
+	key = reader.page.LeafKey(reader.index)
+	return
+}
+
+// InlineVal returns the value bytes stored directly in the page slot.
+func (reader *Reader[B, R]) InlineVal() (val []byte) {
+	if reader.err != null {
+		return
+	}
+	val = reader.page.LeafVal(reader.index)
+	return
+}
+
+// InlineKeyStr returns the inline key as string.
+func (reader *Reader[B, R]) InlineKeyStr() string {
+	return b2s(reader.InlineKey())
+}
+
+// InlineValStr returns the inline value as string.
+func (reader *Reader[B, R]) InlineValStr() string {
+	return b2s(reader.InlineVal())
+}
+
+func (reader *Reader[B, R]) KeyCopy(buf []byte) (key []byte) {
+	if reader.err != null {
+		return
+	}
+	k := reader.page.LeafKey(reader.index)
+	keyInlineSize := reader.root.KeyInlineSize()
+	if len(k) > keyInlineSize {
+		if len(reader.key) != 0 {
+			key = append(buf[:0], reader.key...)
+			return
+		}
+		head, overflowSize, overflowID := Overflow(k, keyInlineSize)
+		var err error
+		key, err = overflow.Read(reader.block, buf, head, overflowSize, overflowID)
+		if err != nil {
+			reader.err = err
+		}
+		return
+	}
+	if key = append(buf[:0], k...); key == nil {
+		key = []byte{}
+	}
+	return
+}
+
+func (reader *Reader[B, R]) ValCopy(buf []byte) (val []byte) {
+	if reader.err != null {
+		return
+	}
+	v := reader.page.LeafVal(reader.index)
+	valInlineSize := reader.root.ValInlineSize()
+	if len(v) > valInlineSize {
+		if len(reader.val) != 0 {
+			val = append(buf[:0], reader.val...)
+			return
+		}
+		head, overflowSize, overflowID := Overflow(v, valInlineSize)
+		var err error
+		val, err = overflow.Read(reader.block, buf, head, overflowSize, overflowID)
+		if err != nil {
+			reader.err = err
+		}
+		return
+	}
+	if val = append(buf[:0], v...); val == nil {
+		val = []byte{}
+	}
+	return
 }

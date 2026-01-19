@@ -13,7 +13,7 @@ import (
 // Writes are serialized. Uncommitted changes are isolated until Commit.
 func (kv *KV[F]) Begin() (tx *Tx[Iter[F]]) {
 	tx = new(Tx[Iter[F]])
-	tx.Begin(kv.Iter(), kv.commit)
+	tx.Begin(kv.Iter(), kv.bptree.CommitSortedChanges)
 	return
 }
 

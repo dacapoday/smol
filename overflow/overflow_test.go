@@ -31,12 +31,12 @@ func TestOverflowWriteReadRecycle(t *testing.T) {
 	defer block.Close()
 
 	data := bytes.Repeat([]byte("hello world"), 2048)
-	head, err := Write(block, data, 10)
+	head, overflowSize, overflowID, err := Write(block, data, 10)
 	if err != nil {
 		t.Fatalf("Write failed: %v", err)
 	}
 
-	body, err := Read(block, nil, head)
+	body, err := Read(block, nil, head, overflowSize, overflowID)
 	if err != nil {
 		t.Fatalf("Read failed: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestOverflowWriteReadRecycle(t *testing.T) {
 		t.Errorf("Data mismatch: got %d bytes, want %d bytes", len(body), len(data))
 	}
 
-	err = Recycle(&b, head)
+	err = Recycle(&b, overflowID)
 	if err != nil {
 		t.Fatalf("Recycle failed: %v", err)
 	}
@@ -66,12 +66,12 @@ func TestOverflowWriteReadRecycleSmallOverflow(t *testing.T) {
 	defer block.Close()
 
 	data := []byte("hello world")
-	head, err := Write(block, data, 10)
+	head, overflowSize, overflowID, err := Write(block, data, 10)
 	if err != nil {
 		t.Fatalf("Write failed: %v", err)
 	}
 
-	body, err := Read(block, nil, head)
+	body, err := Read(block, nil, head, overflowSize, overflowID)
 	if err != nil {
 		t.Fatalf("Read failed: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestOverflowWriteReadRecycleSmallOverflow(t *testing.T) {
 		t.Errorf("Data mismatch: got %d bytes, want %d bytes", len(body), len(data))
 	}
 
-	err = Recycle(&b, head)
+	err = Recycle(&b, overflowID)
 	if err != nil {
 		t.Fatalf("Recycle failed: %v", err)
 	}

@@ -10,25 +10,24 @@ import (
 // Recycle releases all blocks used by the B+ tree.
 func Recycle[B ReadWrite](block B, root Page, keyInlineSize, valInlineSize int) (err error) {
 	task := new(task)
-	recycle(block, task, root, uint16(keyInlineSize), uint16(valInlineSize))
+	recycle(block, task, root, keyInlineSize, valInlineSize)
 	return task.wait()
 }
 
-func recycle[B ReadWrite](block B, task *task, page Page, keyInlineSize, valInlineSize uint16) {
+func recycle[B ReadWrite](block B, task *task, page Page, keyInlineSize, valInlineSize int) {
 	count := page.Count()
 	if page.IsLeaf() {
-		keyInlineSize, valInlineSize := int(keyInlineSize), int(valInlineSize)
 		for i := range count {
 			if key := page.LeafKey(i); len(key) > keyInlineSize {
-				key = append([]byte{}, key...)
+				overflowID := overflowID(key)
 				task.run(func() error {
-					return overflow.Recycle(block, key)
+					return overflow.Recycle(block, overflowID)
 				})
 			}
 			if val := page.LeafVal(i); len(val) > valInlineSize {
-				val = append([]byte{}, val...)
+				overflowID := overflowID(val)
 				task.run(func() error {
-					return overflow.Recycle(block, val)
+					return overflow.Recycle(block, overflowID)
 				})
 			}
 		}
@@ -43,7 +42,7 @@ func recycle[B ReadWrite](block B, task *task, page Page, keyInlineSize, valInli
 	}
 }
 
-func recycleBlock[B ReadWrite](block B, task *task, blockID BlockID, keyInlineSize, valInlineSize uint16) (err error) {
+func recycleBlock[B ReadWrite](block B, task *task, blockID BlockID, keyInlineSize, valInlineSize int) (err error) {
 	buffer := block.AllocateBuffer()
 	err = block.ReadBlock(blockID, buffer, func(buffer []byte) {
 		recycle(block, task, Page(buffer), keyInlineSize, valInlineSize)

@@ -253,7 +253,8 @@ func (writer *itemWriter[B]) branch(i uint16) int {
 		if writer.err != nil {
 			return 0
 		}
-		branchKey, writer.err = overflow.Read(writer.block, writer.buf, branchKey)
+		head, overflowSize, overflowID := Overflow(branchKey, writer.keyInlineSize)
+		branchKey, writer.err = overflow.Read(writer.block, writer.buf, head, overflowSize, overflowID)
 		if writer.err != nil {
 			return 0
 		}
@@ -274,7 +275,8 @@ func (writer *itemWriter[B]) leaf(i uint16) int {
 		if writer.err != nil {
 			return 0
 		}
-		leafKey, writer.err = overflow.Read(writer.block, writer.buf, leafKey)
+		head, overflowSize, overflowID := Overflow(leafKey, writer.keyInlineSize)
+		leafKey, writer.err = overflow.Read(writer.block, writer.buf, head, overflowSize, overflowID)
 		if writer.err != nil {
 			return 0
 		}
@@ -289,8 +291,9 @@ func (writer *itemWriter[B]) write(key, val []byte) {
 		if writer.found {
 			// update
 			if leafVal := writer.list.tail.page.LeafVal(writer.index); len(leafVal) > writer.valInlineSize {
+				overflowID := overflowID(leafVal)
 				writer.run(func() (err error) {
-					return overflow.Recycle(block, leafVal)
+					return overflow.Recycle(block, overflowID)
 				})
 			}
 			item := writer.extend()
@@ -301,9 +304,11 @@ func (writer *itemWriter[B]) write(key, val []byte) {
 			if len(val) > writer.valInlineSize {
 				valInlineSize := writer.valInlineSize
 				writer.run(func() (err error) {
-					var head []byte
-					head, err = overflow.Write(block, val, valInlineSize)
-					item.val = b2s(head)
+					head, overflowSize, overflowID, err := overflow.Write(block, val, valInlineSize)
+					if err != nil {
+						return
+					}
+					item.val = b2s(overflowHead(head, overflowSize, overflowID))
 					return
 				})
 			} else {
@@ -319,9 +324,11 @@ func (writer *itemWriter[B]) write(key, val []byte) {
 			if len(key) > writer.keyInlineSize {
 				keyInlineSize := writer.keyInlineSize
 				writer.run(func() (err error) {
-					var head []byte
-					head, err = overflow.Write(block, key, keyInlineSize)
-					item.key = b2s(head)
+					head, overflowSize, overflowID, err := overflow.Write(block, key, keyInlineSize)
+					if err != nil {
+						return
+					}
+					item.key = b2s(overflowHead(head, overflowSize, overflowID))
 					return
 				})
 			} else {
@@ -330,9 +337,11 @@ func (writer *itemWriter[B]) write(key, val []byte) {
 			if len(val) > writer.valInlineSize {
 				valInlineSize := writer.valInlineSize
 				writer.run(func() (err error) {
-					var head []byte
-					head, err = overflow.Write(block, val, valInlineSize)
-					item.val = b2s(head)
+					head, overflowSize, overflowID, err := overflow.Write(block, val, valInlineSize)
+					if err != nil {
+						return
+					}
+					item.val = b2s(overflowHead(head, overflowSize, overflowID))
 					return
 				})
 			} else {
@@ -343,13 +352,15 @@ func (writer *itemWriter[B]) write(key, val []byte) {
 	} else if writer.found {
 		// delete
 		if leafKey := writer.list.tail.page.LeafKey(writer.index); len(leafKey) > writer.keyInlineSize {
+			overflowID := overflowID(leafKey)
 			writer.run(func() (err error) {
-				return overflow.Recycle(block, leafKey)
+				return overflow.Recycle(block, overflowID)
 			})
 		}
 		if leafVal := writer.list.tail.page.LeafVal(writer.index); len(leafVal) > writer.valInlineSize {
+			overflowID := overflowID(leafVal)
 			writer.run(func() (err error) {
-				return overflow.Recycle(block, leafVal)
+				return overflow.Recycle(block, overflowID)
 			})
 		}
 		if writer.index == writer.list.tail.page.tail.beg {

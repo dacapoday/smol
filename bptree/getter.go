@@ -22,8 +22,6 @@ func Get[B ReadOnly, R RootBlock](block B, root R, buf, key []byte) (val []byte,
 		return
 	}
 
-	if val = append(buf[:0], reader.Val()...); val == nil {
-		val = []byte{}
-	}
+	val = reader.ValCopy(buf)
 	return
 }

@@ -32,12 +32,12 @@ func TestReaderBasic(t *testing.T) {
 	leafItems := newMockLeafItems(itemCount, keyLen, valLen)
 
 	// Write root using writeRoot
-	high, rootPage, err := writeRoot(blk, 0, leafItems)
+	high, rootPage, err := writeRoot(blk, makePage, 0, leafItems)
 	if err != nil {
 		t.Fatalf("writeRoot failed: %v", err)
 	}
 
-	root := &Root[Checkpoint]{
+	root := &Root{
 		high: high,
 		page: rootPage,
 		klen: 1000, // Large enough to avoid overflow
@@ -45,7 +45,7 @@ func TestReaderBasic(t *testing.T) {
 	}
 
 	// Create reader and load
-	var reader Reader[*block.Heap[*mem.File], *Root[Checkpoint]]
+	var reader Reader[*block.Heap[*mem.File], *Root]
 	reader.Load(blk, root)
 	defer reader.Close()
 
@@ -92,7 +92,7 @@ func TestReaderEmptyTree(t *testing.T) {
 	defer blk.Close()
 
 	// Create empty root
-	root := &Root[Checkpoint]{
+	root := &Root{
 		high: 0,
 		page: nil,
 		klen: 1000, // Large enough to avoid overflow
@@ -100,7 +100,7 @@ func TestReaderEmptyTree(t *testing.T) {
 	}
 
 	// Create reader and load
-	var reader Reader[*block.Heap[*mem.File], *Root[Checkpoint]]
+	var reader Reader[*block.Heap[*mem.File], *Root]
 	reader.Load(blk, root)
 	defer reader.Close()
 
