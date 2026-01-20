@@ -14,12 +14,11 @@ import (
 // file headers using TLV format. It contains essential information
 // about blocks, transactions, free space management, and entry data.
 type Meta struct {
-	CodecSpec []byte   // Codec specification (key: 17)
-	Entry     []byte   // Entry data content (key: 16)
+	Entry     []byte   // Entry data content (key: 15)
+	CodecSpec []byte   // Codec specification (key: 14)
 	Freelist  Freelist // Serialized freelist: linked list of BlockIDs in recycle order (key: 13)
 
-	EntryID   BlockID // Entry data BlockID if Entry overflows Meta (key: 15)
-	EntrySize uint32  // Size of entry data (key: 14)
+	EntryID BlockID // Entry data BlockID if Entry overflows Meta (key: 16)
 
 	FreeTotal    uint32 // Total number of free blocks (not includes FreeRecycled) (key: 12)
 	FreeRecycled uint32 // Number of blocks recycled since the current Checkpoint (key: 11)
@@ -30,8 +29,8 @@ type Meta struct {
 	BlockCount uint32 // Total number of blocks (key: 8)
 	BlockSize  uint32 // Size of each block in bytes (key: 7)
 
-	UpdateTime int64  // Last update timestamp (key: 6)
 	Ckp        uint32 // Checkpoint identifier (key: 5)
+	UpdateTime int64  // Last update timestamp (key: 6)
 
 	Version byte // Version (key: 1)
 }
@@ -81,12 +80,7 @@ func decodeMeta[R io.Reader](f R, meta *Meta) (err error) {
 				return
 			}
 			meta.FreeTotal = uint32(val)
-		case 14:
-			if val, err = d.readVal(); err != nil {
-				return
-			}
-			meta.EntrySize = uint32(val)
-		case 15:
+		case 16:
 			if val, err = d.readVal(); err != nil {
 				return
 			}
@@ -110,7 +104,7 @@ func decodeMeta[R io.Reader](f R, meta *Meta) (err error) {
 				return err
 			}
 			meta.Freelist = Freelist(val)
-		case -16:
+		case -15:
 			if val, err = d.readVal(); err != nil {
 				return
 			}
@@ -119,7 +113,7 @@ func decodeMeta[R io.Reader](f R, meta *Meta) (err error) {
 				return err
 			}
 			meta.Entry = val
-		case -17:
+		case -14:
 			if val, err = d.readVal(); err != nil {
 				return
 			}
@@ -147,15 +141,7 @@ func decodeMeta[R io.Reader](f R, meta *Meta) (err error) {
 			}
 			return
 		default:
-			val, err = d.readVal()
-			if err != nil {
-				return
-			}
-			if key < 0 {
-				if _, err = d.readBytes(val); err != nil {
-					return
-				}
-			}
+			return fmt.Errorf("%w meta tag: %d", ErrUnsupported, key)
 		}
 	}
 }
@@ -167,10 +153,10 @@ func encodeMeta[W io.Writer](f W, meta *Meta) (err error) {
 	if err = e.writeVal(1, uint64(meta.Version)); err != nil {
 		return
 	}
-	if err = e.writeBytes(17, meta.CodecSpec); err != nil {
+	if err = e.writeBytes(14, meta.CodecSpec); err != nil {
 		return
 	}
-	if err = e.writeBytes(16, meta.Entry); err != nil {
+	if err = e.writeBytes(15, meta.Entry); err != nil {
 		return
 	}
 	if err = e.writeBytes(13, meta.Freelist); err != nil {
@@ -200,10 +186,7 @@ func encodeMeta[W io.Writer](f W, meta *Meta) (err error) {
 	if err = e.writeVal(12, uint64(meta.FreeTotal)); err != nil {
 		return
 	}
-	if err = e.writeVal(14, uint64(meta.EntrySize)); err != nil {
-		return
-	}
-	if err = e.writeVal(15, uint64(meta.EntryID)); err != nil {
+	if err = e.writeVal(16, uint64(meta.EntryID)); err != nil {
 		return
 	}
 	{
@@ -291,10 +274,10 @@ func (e tlvEncoder) writeBytes(key int64, val []byte) (err error) {
 }
 
 func sizeMeta(meta *Meta) int {
-	size := sizeBytes(17, meta.CodecSpec)
-	size += sizeBytes(16, meta.Entry)
+	size := sizeVal(1, uint64(meta.Version))
+	size += sizeBytes(14, meta.CodecSpec)
+	size += sizeBytes(15, meta.Entry)
 	size += sizeBytes(13, meta.Freelist)
-	size += sizeVal(1, uint64(meta.Version))
 	size += sizeVal(5, uint64(meta.Ckp))
 	size += sizeVal(6, uint64(meta.UpdateTime))
 	size += sizeVal(7, uint64(meta.BlockSize))
@@ -303,8 +286,7 @@ func sizeMeta(meta *Meta) int {
 	size += sizeVal(10, uint64(meta.PrevID))
 	size += sizeVal(11, uint64(meta.FreeRecycled))
 	size += sizeVal(12, uint64(meta.FreeTotal))
-	size += sizeVal(14, uint64(meta.EntrySize))
-	size += sizeVal(15, uint64(meta.EntryID))
+	size += sizeVal(16, uint64(meta.EntryID))
 	size += 1 // terminator
 	size += 4 // CRC32
 	return size

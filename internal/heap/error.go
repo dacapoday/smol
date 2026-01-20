@@ -7,10 +7,10 @@ import (
 var (
 	ErrOpened             = smol.ErrOpened
 	ErrClosed             = smol.ErrClosed
+	ErrUnsupported        = smol.ErrUnsupported
 	ErrFileEmpty          = smol.ErrFileEmpty
 	ErrFileTruncated      = smol.ErrFileTruncated
 	ErrUnknownMagicCode   = smol.ErrUnknownMagicCode
-	ErrUnsupported        = smol.ErrUnsupported
 	ErrInvalidBlockSize   = smol.ErrInvalidBlockSize
 	ErrInvalidChecksum    = smol.ErrInvalidChecksum
 	ErrInvalidCipherSuite = smol.ErrInvalidCipherSuite

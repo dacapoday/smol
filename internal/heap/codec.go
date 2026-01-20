@@ -54,7 +54,7 @@ func (codec *codec) load(file io.ReaderAt, opt Option, meta *Meta) (err error) {
 
 		return codec.loadEntry(file, meta)
 	}
-	return fmt.Errorf("%e: %w", ErrInvalidCipherSuite, ErrUnsupported)
+	return fmt.Errorf("%w cipher suite: %d", ErrUnsupported, suite)
 }
 
 func (codec *codec) init(file io.WriterAt, opt Option) (meta *Meta, err error) {
@@ -121,9 +121,9 @@ func (codec *codec) init(file io.WriterAt, opt Option) (meta *Meta, err error) {
 }
 
 func (codec *codec) size() int { // at least 4
-	// if codec.aead == nil {
-	// 	return 0
-	// }
+	if codec.aead == nil {
+		return 0
+	}
 
 	return codec.aead.NonceSize() + codec.aead.Overhead()
 }

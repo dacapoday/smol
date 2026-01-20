@@ -135,7 +135,6 @@ func TestCodecLoad(t *testing.T) {
 	meta := &Meta{
 		CodecSpec:  []byte{0x0a},
 		BlockSize:  4096,
-		EntrySize:  uint32(len(entry)),
 		Entry:      encoded,
 		BlockCount: 2,
 	}

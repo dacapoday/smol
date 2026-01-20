@@ -5,10 +5,10 @@ import "errors"
 var (
 	ErrOpened              = errors.New("opened")
 	ErrClosed              = errors.New("closed")
+	ErrUnsupported         = errors.New("unsupported")
 	ErrFileEmpty           = errors.New("empty file")
 	ErrFileTruncated       = errors.New("file truncated")
 	ErrUnknownMagicCode    = errors.New("unknown magic code")
-	ErrUnsupported         = errors.New("unsupported version")
 	ErrInvalidBlockSize    = errors.New("invalid block size")
 	ErrInvalidChecksum     = errors.New("invalid checksum")
 	ErrInvalidCipherSuite  = errors.New("invalid cipher suite")

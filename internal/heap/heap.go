@@ -244,6 +244,15 @@ func (heap *Heap[F]) Recycle(blockID BlockID) {
 }
 
 func (heap *Heap[F]) ReadBlock(blockID BlockID, buffer []byte) (err error) {
+	if phase := heap.phase.Load(); phase != readwrite {
+		if phase == nil {
+			err = ErrClosed
+			return
+		}
+		err = phase.error
+		return
+	}
+
 	if _, err = heap.block.readAt(buffer, blockID); err != nil {
 		err = fmt.Errorf("read block(%v) failed: %w", blockID, err)
 		return
@@ -251,7 +260,16 @@ func (heap *Heap[F]) ReadBlock(blockID BlockID, buffer []byte) (err error) {
 	return heap.codec.decode(buffer, blockID)
 }
 
-func (heap *Heap[F]) ReadAt(buffer []byte, blockID BlockID) (int, error) {
+func (heap *Heap[F]) ReadAt(buffer []byte, blockID BlockID) (n int, err error) {
+	if phase := heap.phase.Load(); phase != readwrite {
+		if phase == nil {
+			err = ErrClosed
+			return
+		}
+		err = phase.error
+		return
+	}
+
 	return heap.block.readAt(buffer, blockID)
 }
 
@@ -366,17 +384,6 @@ func (heap *Heap[F]) Rollback() (err error) {
 }
 
 func (heap *Heap[F]) Commit(entry []byte) (meta *Meta, ckpt Checkpoint, err error) {
-	entrySize := len(entry)
-	if entrySize > heap.PageSize() {
-		if heap.codec.spec == nil {
-			if entrySize > heap.BlockSize() {
-				panic(errors.New("entrySize > blockSize"))
-			}
-		} else {
-			panic(errors.New("entrySize > pageSize"))
-		}
-	}
-
 	heap.mutex.Lock()
 	defer heap.mutex.Unlock()
 
@@ -391,6 +398,17 @@ func (heap *Heap[F]) Commit(entry []byte) (meta *Meta, ckpt Checkpoint, err erro
 		}
 		err = phase.error
 		return
+	}
+
+	entrySize := len(entry)
+	if entrySize > heap.PageSize() {
+		if heap.codec.spec == nil {
+			if entrySize > heap.BlockSize() {
+				panic(errors.New("entrySize > blockSize"))
+			}
+		} else {
+			panic(errors.New("entrySize > pageSize"))
+		}
 	}
 
 	meta = new(Meta)
@@ -439,7 +457,6 @@ func (heap *Heap[F]) Commit(entry []byte) (meta *Meta, ckpt Checkpoint, err erro
 		}
 	}()
 
-	meta.EntrySize = uint32(entrySize)
 	meta.Entry = heap.codec.encodeEntry(entry)
 
 	blockSize := int(heap.block.size)

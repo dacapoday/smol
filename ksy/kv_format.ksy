@@ -249,6 +249,5 @@ enums:
     11: free_recycled
     12: free_total
     13: freelist
-    14: entry_size
-    15: entry_id
-    16: entry
+    15: entry
+    16: entry_id

@@ -49,7 +49,7 @@ func (heap *Heap[F]) load(file F, opt Option) (meta *Meta, err error) {
 
 	if meta.Version != 0 {
 		meta = nil
-		err = ErrUnsupported
+		err = fmt.Errorf("%w meta version: %d", ErrUnsupported, meta.Version)
 		return
 	}
 	if meta.BlockCount > 2 {

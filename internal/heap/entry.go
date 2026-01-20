@@ -7,68 +7,71 @@ import (
 )
 
 func (codec *codec) loadEntry(r io.ReaderAt, meta *Meta) (err error) {
-	size := int(meta.EntrySize) + codec.size()
-	entrySize := size - len(meta.Entry)
-	if entrySize == 0 {
-		err = codec.decode(meta.Entry, 1)
-		meta.Entry = meta.Entry[:meta.EntrySize]
-		return
-	}
-	if entrySize < 0 {
-		err = fmt.Errorf("%w entrySize", ErrInvalidMeta)
-		return
-	}
+	var entry []byte
 	if meta.EntryID < 2 {
-		err = fmt.Errorf("%w entryID", ErrInvalidMeta)
-		return
-	}
-	entrySize += 4
-	entry := make([]byte, entrySize)
-	if _, err = r.ReadAt(entry, int64(meta.EntryID)*int64(meta.BlockSize)); err != nil {
-		err = fmt.Errorf("read entry(%d) failed: %w", meta.EntryID, err)
-		return
-	}
-	if entry[1] == 0 && entry[0] == 0 {
-		if int(binary.LittleEndian.Uint16(entry[2:4]))+4+codec.size() == len(entry) {
-			entry = entry[4-len(meta.Entry):]
-			copy(entry, meta.Entry)
-			err = codec.decode(entry, 1)
-			meta.Entry = entry[:meta.EntrySize]
+		if len(meta.Entry) == 0 {
 			return
 		}
+		entry = meta.Entry
+	} else {
+		offset := int64(meta.EntryID) * int64(meta.BlockSize)
+
+		var head [4]byte
+		if _, err = r.ReadAt(head[:], offset); err != nil {
+			err = fmt.Errorf("read entry(%d) failed: %w", meta.EntryID, err)
+			return
+		}
+		if head[0] != 0 || head[1] != 0 {
+			return fmt.Errorf("%w entry", ErrInvalidMeta)
+		}
+
+		headSize := len(meta.Entry)
+		entry = make([]byte, headSize+int(binary.LittleEndian.Uint16(head[2:4])))
+		if _, err = r.ReadAt(entry[headSize:], offset+4); err != nil {
+			err = fmt.Errorf("read entry(%d) failed: %w", meta.EntryID, err)
+			return
+		}
+		copy(entry, meta.Entry)
 	}
-	return fmt.Errorf("%w entry", ErrInvalidMeta)
+
+	if err = codec.decode(entry, 1); err != nil {
+		return
+	}
+
+	meta.Entry = entry[:len(entry)-codec.size()]
+	return
 }
 
 func loadPlainEntry(r io.ReaderAt, meta *Meta) (err error) {
-	entrySize := int(meta.EntrySize) - len(meta.Entry)
-	if entrySize == 0 {
-		return
-	}
-	if entrySize < 0 {
-		err = fmt.Errorf("%w entrySize", ErrInvalidMeta)
-		return
-	}
 	if meta.EntryID < 2 {
-		err = fmt.Errorf("%w entryID", ErrInvalidMeta)
 		return
 	}
-	entrySize += 4
-	entry := make([]byte, entrySize+max(4, len(meta.Entry)))
-	if _, err = r.ReadAt(entry[:entrySize+4], int64(meta.EntryID)*int64(meta.BlockSize)); err != nil {
+
+	offset := int64(meta.EntryID) * int64(meta.BlockSize)
+
+	var head [4]byte
+	if _, err = r.ReadAt(head[:], offset); err != nil {
 		err = fmt.Errorf("read entry(%d) failed: %w", meta.EntryID, err)
 		return
 	}
-	if entry[1] == 0 && entry[0] == 0 {
-		if int(binary.LittleEndian.Uint16(entry[2:4]))+4 == entrySize {
-			if binary.LittleEndian.Uint32(entry[entrySize:]) == checksum(entry[:entrySize]) {
-				copy(entry[entrySize:], meta.Entry)
-				meta.Entry = entry[4 : entrySize+len(meta.Entry)]
-				return
-			}
-		}
+	if head[0] != 0 || head[1] != 0 {
+		return fmt.Errorf("%w entry", ErrInvalidMeta)
 	}
-	return fmt.Errorf("%w entry", ErrInvalidMeta)
+
+	size := 4 + int(binary.LittleEndian.Uint16(head[2:4]))
+	entry := make([]byte, size+max(len(meta.Entry), 4))
+	if _, err = r.ReadAt(entry[:size+4], offset); err != nil {
+		err = fmt.Errorf("read entry(%d) failed: %w", meta.EntryID, err)
+		return
+	}
+
+	if binary.LittleEndian.Uint32(entry[size:]) != checksum(entry[:size]) {
+		return fmt.Errorf("%w entry checksum", ErrInvalidMeta)
+	}
+
+	copy(entry[size:], meta.Entry)
+	meta.Entry = entry[4 : size+len(meta.Entry)]
+	return
 }
 
 func (codec *codec) encodeEntry(entry []byte) []byte {
@@ -98,11 +101,11 @@ func (heap *Heap[F]) saveEntry(meta *Meta) (err error) {
 	}
 
 	copy(buffer[4:], entry)
-	binary.LittleEndian.PutUint16(buffer[2:], uint16(len(entry)-heap.codec.size()))
+	binary.LittleEndian.PutUint16(buffer[2:], uint16(len(entry)))
 	buffer[1] = 0
 	buffer[0] = 0
 
-	_, err = heap.block.writeAt(buffer[:len(entry)+4], meta.EntryID)
+	_, err = heap.block.writeAt(buffer[:4+len(entry)], meta.EntryID)
 	return
 }
 

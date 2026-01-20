@@ -162,6 +162,44 @@ func TestHeapRollback(t *testing.T) {
 	heap.Close()
 }
 
+func TestHeapClosedMethods(t *testing.T) {
+	heap, _, ckpt := newTestHeap(t, defaultOpt)
+	ckpt.Release()
+
+	bid, _ := heap.Allocate()
+	buffer := make([]byte, heap.BlockSize())
+
+	heap.Close()
+
+	noPanic := func(name string, fn func()) {
+		t.Helper()
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("%s: panicked: %v", name, r)
+			}
+		}()
+		fn()
+	}
+
+	noPanic("Error", func() { heap.Error() })
+	noPanic("Close", func() { heap.Close() })
+	noPanic("AllCheckpointReleased", func() { heap.AllCheckpointReleased() })
+	noPanic("Extend", func() { heap.Extend() })
+	noPanic("Allocate", func() { heap.Allocate() })
+	noPanic("WriteBlock", func() { heap.WriteBlock(bid, buffer) })
+	noPanic("WriteAt", func() { heap.WriteAt(buffer, bid) })
+	noPanic("Rollback", func() { heap.Rollback() })
+	noPanic("Commit", func() { heap.Commit([]byte("test")) })
+	noPanic("ReadBlock", func() { heap.ReadBlock(bid, buffer) })
+	noPanic("ReadAt", func() { heap.ReadAt(buffer, bid) })
+	noPanic("Recycle", func() { heap.Recycle(bid) })
+	noPanic("RecycleN", func() {
+		heap.RecycleN(func(yield func(BlockID) bool) { yield(bid) })
+	})
+	noPanic("PageSize", func() { heap.PageSize() })
+	noPanic("BlockSize", func() { heap.BlockSize() })
+}
+
 func TestHeapReadOnly(t *testing.T) {
 	file := new(mem.File)
 

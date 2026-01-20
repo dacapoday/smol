@@ -18,7 +18,6 @@ func TestMetaRoundTrip(t *testing.T) {
 		PrevID:       456,
 		FreeRecycled: 10,
 		FreeTotal:    50,
-		EntrySize:    15,
 		EntryID:      7,
 		Entry:        []byte("test entry"),
 		Freelist:     []byte{1, 2, 3, 4},
@@ -77,7 +76,6 @@ func TestMetaMaxValues(t *testing.T) {
 		PrevID:       math.MaxUint32,
 		FreeRecycled: math.MaxUint32,
 		FreeTotal:    math.MaxUint32,
-		EntrySize:    math.MaxUint32,
 		EntryID:      math.MaxUint32,
 	}
 
@@ -169,7 +167,6 @@ func TestSizeMeta(t *testing.T) {
 		PrevID:       456,
 		FreeRecycled: 10,
 		FreeTotal:    50,
-		EntrySize:    15,
 		EntryID:      7,
 		Entry:        []byte("test entry"),
 		Freelist:     []byte{1, 2, 3, 4},
