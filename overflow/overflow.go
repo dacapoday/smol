@@ -2,14 +2,16 @@
 // Uses a singly-linked list to chain overflow pages when data exceeds block capacity.
 package overflow
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+)
 
 // Read reads complete data from block using head.
 // Reuses buf if it has enough capacity; otherwise allocates new buffer.
 // Returns complete data in body.
 func Read[B ReadOnly](block B, buf []byte, head []byte, overflowSize int, overflowID BlockID) (body []byte, err error) {
 	if overflowID < 2 {
-		err = ErrInvalidOverflowHead
+		err = ErrBadOverflow
 		return
 	}
 
@@ -44,7 +46,7 @@ func Read[B ReadOnly](block B, buf []byte, head []byte, overflowSize int, overfl
 		}
 		if overflowID < 2 {
 			if overflowID == 1 {
-				err = ErrInvalidOverflowPage
+				err = ErrBadOverflow
 			}
 			return
 		}
@@ -66,7 +68,7 @@ func Recycle[B ReadWrite](block B, overflowID BlockID) (err error) {
 
 		nextID = page.OverflowID()
 		if nextID < 2 {
-			err = ErrInvalidOverflowPage
+			err = ErrBadOverflow
 		}
 	}
 

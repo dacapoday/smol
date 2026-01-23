@@ -7,9 +7,8 @@ import (
 )
 
 var (
-	ErrInvalidOverflowHead = smol.ErrInvalidOverflowHead
-	ErrInvalidOverflowPage = smol.ErrInvalidOverflowPage
-	ErrAllocateFailed      = smol.ErrAllocateFailed
+	ErrBadOverflow    = smol.ErrBadOverflow
+	ErrAllocateFailed = smol.ErrAllocateFailed
 )
 
 func errAllocateFailed[B ReadWrite](b B) error {
