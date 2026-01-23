@@ -30,7 +30,7 @@ func TestBufferOverflow(t *testing.T) {
 	buf.Write([]byte("hello"))
 
 	n, err := buf.Write([]byte("x"))
-	if err != ErrOutOfRange || n != 0 {
+	if err != errOutOfRange || n != 0 {
 		t.Errorf("n=%d err=%v", n, err)
 	}
 	if !bytes.Equal(buf, []byte("hello")) {
@@ -42,7 +42,7 @@ func TestBufferZeroCapacity(t *testing.T) {
 	buf := make(Buffer, 0, 0)
 
 	n, err := buf.Write([]byte("x"))
-	if err != ErrOutOfRange || n != 0 {
+	if err != errOutOfRange || n != 0 {
 		t.Errorf("n=%d err=%v", n, err)
 	}
 }

@@ -37,7 +37,7 @@ type Heap[F File] struct {
 type phase struct{ error }
 
 var readwrite = &phase{errors.New("readwrite")}
-var readyonly = &phase{errors.New("readonly")}
+var readonly = &phase{errors.New("readonly")}
 
 type Checkpoint = *checkpoint
 
@@ -69,13 +69,14 @@ func (heap *Heap[F]) Load(file F, opt Option) (meta *Meta, ckpt Checkpoint, err 
 	heap.mutex.Lock()
 	defer heap.mutex.Unlock()
 
-	if heap.buffer != nil {
-		err = fmt.Errorf("already %w", ErrOpened)
-		return
+	if heap.phase.Load() != nil {
+		panic("heap.Load: already open")
 	}
 
 	meta, err = heap.load(file, opt)
 	if err != nil {
+		err = fmt.Errorf("heap.Load: %w", err)
+		heap.phase.Store(&phase{error: err})
 		return
 	}
 
@@ -83,7 +84,7 @@ func (heap *Heap[F]) Load(file F, opt Option) (meta *Meta, ckpt Checkpoint, err 
 		ckpt = new(checkpoint)
 		ckpt.Acquire()
 		heap.head = ckpt
-		heap.phase.Store(readyonly)
+		heap.phase.Store(readonly)
 		return
 	}
 
@@ -91,7 +92,8 @@ func (heap *Heap[F]) Load(file F, opt Option) (meta *Meta, ckpt Checkpoint, err 
 	heap.free.tail.capacity = freelistCapacity(heap.block.size)
 	if err = heap.restore(meta); err != nil {
 		meta = nil
-		heap.buffer = nil
+		err = fmt.Errorf("heap.Load: %w", err)
+		heap.phase.Store(&phase{error: err})
 		return
 	}
 
@@ -208,6 +210,7 @@ func (heap *Heap[F]) extend() BlockID {
 
 	blockID, err := heap.block.extend()
 	if err != nil {
+		err = fmt.Errorf("heap.extend: %w", err)
 		heap.phase.CompareAndSwap(readwrite, &phase{error: err})
 		return 0
 	}
@@ -224,20 +227,14 @@ func (heap *Heap[F]) Allocate() (blockID BlockID, reuse bool) {
 func (heap *Heap[F]) RecycleN(iter func(yield func(BlockID) bool)) {
 	heap.mutex.Lock()
 	for blockID := range iter {
-		if blockID < 2 {
-			panic(errors.New("blockID < 2"))
-		}
-
+		assertBlockID("heap.RecycleN", blockID)
 		heap.recycle(blockID)
 	}
 	heap.mutex.Unlock()
 }
 
 func (heap *Heap[F]) Recycle(blockID BlockID) {
-	if blockID < 2 {
-		panic(errors.New("blockID < 2"))
-	}
-
+	assertBlockID("heap.Recycle", blockID)
 	heap.mutex.Lock()
 	heap.recycle(blockID)
 	heap.mutex.Unlock()
@@ -254,7 +251,6 @@ func (heap *Heap[F]) ReadBlock(blockID BlockID, buffer []byte) (err error) {
 	}
 
 	if _, err = heap.block.readAt(buffer, blockID); err != nil {
-		err = fmt.Errorf("read block(%v) failed: %w", blockID, err)
 		return
 	}
 	return heap.codec.decode(buffer, blockID)
@@ -274,12 +270,9 @@ func (heap *Heap[F]) ReadAt(buffer []byte, blockID BlockID) (n int, err error) {
 }
 
 func (heap *Heap[F]) WriteBlock(blockID BlockID, buffer []byte) (err error) {
-	if blockID < 2 {
-		panic(errors.New("blockID < 2"))
-	}
-
+	assertBlockID("heap.WriteBlock", blockID)
 	if phase := heap.phase.Load(); phase != readwrite {
-		if phase == readyonly {
+		if phase == readonly {
 			err = ErrReadOnly
 			return
 		}
@@ -294,19 +287,16 @@ func (heap *Heap[F]) WriteBlock(blockID BlockID, buffer []byte) (err error) {
 	heap.codec.encode(buffer, blockID)
 
 	if _, err = heap.block.writeAt(buffer, blockID); err != nil {
-		err = fmt.Errorf("write block(%d) failed: %w", blockID, err)
+		err = fmt.Errorf("heap.WriteBlock(%d): %w", blockID, err)
 		heap.phase.CompareAndSwap(readwrite, &phase{err})
 	}
 	return
 }
 
 func (heap *Heap[F]) WriteAt(buffer []byte, blockID BlockID) (n int, err error) {
-	if blockID < 2 {
-		panic(errors.New("blockID < 2"))
-	}
-
+	assertBlockID("heap.WriteAt", blockID)
 	if phase := heap.phase.Load(); phase != readwrite {
-		if phase == readyonly {
+		if phase == readonly {
 			err = ErrReadOnly
 			return
 		}
@@ -319,7 +309,7 @@ func (heap *Heap[F]) WriteAt(buffer []byte, blockID BlockID) (n int, err error) 
 	}
 
 	if n, err = heap.block.writeAt(buffer, blockID); err != nil {
-		err = fmt.Errorf("write block(%d) failed: %w", blockID, err)
+		err = fmt.Errorf("heap.WriteAt(%d): %w", blockID, err)
 		heap.phase.CompareAndSwap(readwrite, &phase{err})
 	}
 	return
@@ -330,7 +320,7 @@ func (heap *Heap[F]) Error() (err error) {
 	if phase == readwrite {
 		return
 	}
-	if phase == readyonly {
+	if phase == readonly {
 		err = ErrReadOnly
 		return
 	}
@@ -347,7 +337,7 @@ func (heap *Heap[F]) Rollback() (err error) {
 	defer heap.mutex.Unlock()
 
 	if phase := heap.phase.Load(); phase != readwrite {
-		if phase == readyonly {
+		if phase == readonly {
 			return
 		}
 		if phase == nil {
@@ -358,12 +348,14 @@ func (heap *Heap[F]) Rollback() (err error) {
 
 	meta, err := heap.meta(BlockID(heap.ckp % 2))
 	if err != nil {
+		err = fmt.Errorf("heap.Rollback: %w", err)
 		return
 	}
 
 	rollback := meta.FreeRecycled + meta.FreeTotal - heap.free.total
 
 	if err = heap.restore(meta); err != nil {
+		err = fmt.Errorf("heap.Rollback: %w", err)
 		return
 	}
 
@@ -388,7 +380,7 @@ func (heap *Heap[F]) Commit(entry []byte) (meta *Meta, ckpt Checkpoint, err erro
 	defer heap.mutex.Unlock()
 
 	if phase := heap.phase.Load(); phase != readwrite {
-		if phase == readyonly {
+		if phase == readonly {
 			err = ErrReadOnly
 			return
 		}
@@ -401,14 +393,10 @@ func (heap *Heap[F]) Commit(entry []byte) (meta *Meta, ckpt Checkpoint, err erro
 	}
 
 	entrySize := len(entry)
-	if entrySize > heap.PageSize() {
-		if heap.codec.spec == nil {
-			if entrySize > heap.BlockSize() {
-				panic(errors.New("entrySize > blockSize"))
-			}
-		} else {
-			panic(errors.New("entrySize > pageSize"))
-		}
+	if heap.codec.spec == nil {
+		assertEntrySize("heap.Commit", entrySize, heap.BlockSize())
+	} else {
+		assertEntrySize("heap.Commit", entrySize, heap.PageSize())
 	}
 
 	meta = new(Meta)
@@ -461,9 +449,9 @@ func (heap *Heap[F]) Commit(entry []byte) (meta *Meta, ckpt Checkpoint, err erro
 
 	blockSize := int(heap.block.size)
 	if blockSize >= len(meta.Entry)+freelistSize(heap.free.tail.length)+74 {
-		if err = heap.save(meta); !errors.Is(err, ErrOutOfRange) {
+		if err = heap.save(meta); !errors.Is(err, errOutOfRange) {
 			if err != nil {
-				err = fmt.Errorf("save meta(%d) failed: %w", meta.Ckp%2, err)
+				err = fmt.Errorf("heap.Commit: save meta(%d) failed: %w", meta.Ckp%2, err)
 				heap.phase.CompareAndSwap(readwrite, &phase{err})
 			}
 			return
@@ -477,14 +465,14 @@ func (heap *Heap[F]) Commit(entry []byte) (meta *Meta, ckpt Checkpoint, err erro
 		}
 
 		if err = heap.saveEntry(meta); err != nil {
-			err = fmt.Errorf("save entry(%d) failed: %w", meta.EntryID, err)
+			err = fmt.Errorf("heap.Commit: save entry(%d) failed: %w", meta.EntryID, err)
 			heap.phase.CompareAndSwap(readwrite, &phase{err})
 			return
 		}
 
-		if err = heap.save(meta); !errors.Is(err, ErrOutOfRange) {
+		if err = heap.save(meta); !errors.Is(err, errOutOfRange) {
 			if err != nil {
-				err = fmt.Errorf("save meta(%d) failed: %w", meta.Ckp%2, err)
+				err = fmt.Errorf("heap.Commit: save meta(%d) failed: %w", meta.Ckp%2, err)
 				heap.phase.CompareAndSwap(readwrite, &phase{err})
 			}
 			return
@@ -499,14 +487,14 @@ func (heap *Heap[F]) Commit(entry []byte) (meta *Meta, ckpt Checkpoint, err erro
 		}
 
 		if err = heap.saveFreelist(freelistID); err != nil {
-			err = fmt.Errorf("save freelist(%d) failed: %w", freelistID, err)
+			err = fmt.Errorf("heap.Commit: save freelist(%d) failed: %w", freelistID, err)
 			heap.phase.CompareAndSwap(readwrite, &phase{err})
 			return
 		}
 	}
 
 	if err = heap.save(meta); err != nil {
-		err = fmt.Errorf("save meta(%d) failed: %w", meta.Ckp%2, err)
+		err = fmt.Errorf("heap.Commit: save meta(%d) failed: %w", meta.Ckp%2, err)
 		heap.phase.CompareAndSwap(readwrite, &phase{err})
 	}
 	return

@@ -25,8 +25,8 @@ func TestCodecPlainAEAD(t *testing.T) {
 	}
 
 	buffer[len(buffer)-1] ^= 0xFF
-	if err := c.decode(buffer, 42); err != ErrInvalidChecksum {
-		t.Errorf("expected ErrInvalidChecksum, got %v", err)
+	if err := c.decode(buffer, 42); err != ErrBadChecksum {
+		t.Errorf("expected ErrBadChecksum, got %v", err)
 	}
 }
 
@@ -49,7 +49,7 @@ func TestCodecCRC32AEAD(t *testing.T) {
 
 	copy(buffer, data)
 	c.encode(buffer, 100)
-	if err := c.decode(buffer, 101); err != ErrInvalidChecksum {
+	if err := c.decode(buffer, 101); err != ErrBadChecksum {
 		t.Errorf("wrong blockID should fail: %v", err)
 	}
 }

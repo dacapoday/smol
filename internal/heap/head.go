@@ -84,7 +84,7 @@ func loadMeta[RS io.ReadSeeker](f RS, magic [4]byte) (metaA, metaB *Meta, err er
 			return
 		}
 		if head != magic {
-			err = fmt.Errorf("%w %v", ErrUnknownMagicCode, head)
+			err = fmt.Errorf("%w: %v", ErrUnknownMagicCode, head)
 			return
 		}
 
@@ -102,7 +102,7 @@ func loadMeta[RS io.ReadSeeker](f RS, magic [4]byte) (metaA, metaB *Meta, err er
 	}
 
 	if errors.Is(err, ErrUnknownMagicCode) {
-		err = fmt.Errorf("metaA has %w", err)
+		err = fmt.Errorf("metaA: %w", err)
 		return
 	}
 
@@ -116,7 +116,7 @@ func loadMeta[RS io.ReadSeeker](f RS, magic [4]byte) (metaA, metaB *Meta, err er
 			return
 		}
 	}
-	err = fmt.Errorf("metaB has %w", err)
+	err = fmt.Errorf("metaB: %w", err)
 	return
 }
 

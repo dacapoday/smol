@@ -18,7 +18,7 @@ func (buffer *Buffer) Write(p []byte) (n int, err error) {
 	b := *buffer
 	n = len(p)
 	if n+len(b) > cap(b) {
-		return 0, ErrOutOfRange
+		return 0, errOutOfRange
 	}
 	*buffer = append(b, p...)
 	return

@@ -245,8 +245,11 @@ func (reader *Reader[B, R]) SeekFirst() bool {
 	// }
 	high := len(reader.level)
 	if high == 0 {
-		if reader.err == nil {
-			return false
+		if reader.level == nil {
+			if reader.err == nil {
+				return false
+			}
+			return reader.seekFirst()
 		}
 		count := reader.page.Count()
 		if count == 0 {
@@ -301,8 +304,11 @@ func (reader *Reader[B, R]) SeekLast() bool {
 	// }
 	high := len(reader.level)
 	if high == 0 {
-		if reader.err == nil {
-			return false
+		if reader.level == nil {
+			if reader.err == nil {
+				return false
+			}
+			return reader.seekLast()
 		}
 		count := reader.page.Count()
 		if count == 0 {
@@ -365,8 +371,11 @@ func (reader *Reader[B, R]) Seek(key []byte) bool {
 	}
 	high := len(reader.level)
 	if high == 0 {
-		if reader.err == nil {
-			return false
+		if reader.level == nil {
+			if reader.err == nil {
+				return false
+			}
+			return reader.seek(key)
 		}
 		page := reader.page
 		count := page.Count()

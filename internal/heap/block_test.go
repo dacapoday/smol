@@ -81,7 +81,7 @@ func TestBlockExtendOverflow(t *testing.T) {
 
 	// 绕回后：count = 0
 	id, err = b.extend()
-	if !errors.Is(err, ErrOutOfSpace) || id != 0 {
+	if !errors.Is(err, ErrNoSpace) || id != 0 {
 		t.Errorf("after overflow: id=%d err=%v", id, err)
 	}
 }

@@ -52,7 +52,7 @@ func (heap *Heap[F]) restore(meta *Meta) (err error) {
 			free.total = 0
 			return
 		}
-		err = fmt.Errorf("meta.Freelist is %w", ErrInvalidFreelist)
+		err = fmt.Errorf("meta.Freelist is %w", ErrBadFreelist)
 		return
 	}
 
@@ -71,10 +71,10 @@ func (heap *Heap[F]) restore(meta *Meta) (err error) {
 	load := func(blockID BlockID) (Freelist, error) {
 		freelist := Freelist(heap.buffer)
 		if _, err := heap.block.readAt(freelist, blockID); err != nil {
-			return nil, fmt.Errorf("read freelist(%v) failed: %w", blockID, err)
+			return nil, fmt.Errorf("read freelist(%d) failed: %w", blockID, err)
 		}
 		if freelist.invalid() {
-			return nil, fmt.Errorf("block(%v) is %w", blockID, ErrInvalidFreelist)
+			return nil, fmt.Errorf("block(%d) is %w", blockID, ErrBadFreelist)
 		}
 		return freelist, nil
 	}
@@ -115,7 +115,7 @@ func (heap *Heap[F]) restore(meta *Meta) (err error) {
 		free.total = total
 	}
 	if freelist != nil {
-		ring := free.tail
+		ring := free.tail // copy
 		ring.buffer = nil
 		ring.reset()
 		freelist2ring(freelist, &ring, count)
@@ -150,7 +150,7 @@ func (heap *Heap[F]) allocate(recycle func(BlockID)) (blockID BlockID, reuse boo
 				if prevID != 0 {
 					heap.free.queue.unshift(prevID)
 				}
-				heap.phase.CompareAndSwap(readwrite, &phase{error: fmt.Errorf("read freelist(%v) failed: %w", nextID, err)})
+				heap.phase.CompareAndSwap(readwrite, &phase{error: fmt.Errorf("heap.allocate: read freelist(%d) failed: %w", nextID, err)})
 				break
 			}
 
@@ -158,7 +158,7 @@ func (heap *Heap[F]) allocate(recycle func(BlockID)) (blockID BlockID, reuse boo
 				if prevID != 0 {
 					heap.free.queue.unshift(prevID)
 				}
-				heap.phase.CompareAndSwap(readwrite, &phase{error: fmt.Errorf("block(%v) is %w", nextID, ErrInvalidFreelist)})
+				heap.phase.CompareAndSwap(readwrite, &phase{error: fmt.Errorf("heap.allocate: block(%d) is %w", nextID, ErrBadFreelist)})
 				break
 			}
 
@@ -187,13 +187,13 @@ func (heap *Heap[F]) recycle(blockID BlockID) {
 			}
 			if reuse && heap.free.tail.push(blockID) {
 				if err := heap.saveFreelist(freelistID); err != nil {
-					err = fmt.Errorf("write freelist(%d) failed: %w", freelistID, err)
+					err = fmt.Errorf("heap.recycle: save freelist(%d) failed: %w", blockID, err)
 					heap.phase.CompareAndSwap(readwrite, &phase{err})
 					return
 				}
 			} else {
 				if err := heap.saveFreelist(freelistID); err != nil {
-					err = fmt.Errorf("write freelist(%d) failed: %w", freelistID, err)
+					err = fmt.Errorf("heap.recycle: save freelist(%d) failed: %w", blockID, err)
 					heap.phase.CompareAndSwap(readwrite, &phase{err})
 					return
 				}

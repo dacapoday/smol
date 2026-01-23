@@ -136,7 +136,7 @@ func decodeMeta[R io.Reader](f R, meta *Meta) (err error) {
 			} else {
 				val := binary.LittleEndian.Uint32(buf[:])
 				if c.Sum32() != val {
-					err = fmt.Errorf("%w checksum", ErrInvalidMeta)
+					err = fmt.Errorf("%w checksum", ErrBadMeta)
 				}
 			}
 			return
@@ -221,7 +221,7 @@ func (d tlvDecoder) readKey() (int64, error) {
 
 func (d tlvDecoder) readBytes(length uint64) (bytes []byte, err error) {
 	if length >= 1<<16 {
-		err = fmt.Errorf("%w bytes", ErrInvalidMeta)
+		err = fmt.Errorf("%w bytes", ErrBadMeta)
 		return
 	}
 

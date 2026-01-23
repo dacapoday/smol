@@ -36,7 +36,7 @@ type testOption struct {
 	readOnly              bool
 	ignoreInvalidFreelist bool
 	retainCheckpoints     uint8
-	blockSize             uint32
+	blockSize             int
 	cipherSuite           string
 	cipherKey             []byte
 }
@@ -45,6 +45,12 @@ func (o testOption) MagicCode() [4]byte          { return o.magicCode }
 func (o testOption) ReadOnly() bool              { return o.readOnly }
 func (o testOption) IgnoreInvalidFreelist() bool { return o.ignoreInvalidFreelist }
 func (o testOption) RetainCheckpoints() uint8    { return o.retainCheckpoints }
-func (o testOption) BlockSize() uint32           { return o.blockSize }
-func (o testOption) CipherSuite() string         { return o.cipherSuite }
-func (o testOption) CipherKey() []byte           { return o.cipherKey }
+func (o testOption) BlockSize() int {
+	if o.blockSize == 0 {
+		return 4096
+	} else {
+		return o.blockSize
+	}
+}
+func (o testOption) CipherSuite() string { return o.cipherSuite }
+func (o testOption) CipherKey() []byte   { return o.cipherKey }

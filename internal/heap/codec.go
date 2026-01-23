@@ -38,18 +38,18 @@ func (codec *codec) load(file io.ReaderAt, opt Option, meta *Meta) (err error) {
 
 	suite, n := binary.Varint(codec.spec)
 	if n <= 0 {
-		return fmt.Errorf("%w spec", ErrInvalidCipherSuite)
+		return ErrBadCipherSpec
 	}
 	switch suite {
 	case aes_256_gcm:
 		key := getCipherKey(opt)
 		if len(key) != 32 {
-			return fmt.Errorf("aes-256-gcm: %w size", ErrInvalidCipherKey)
+			return fmt.Errorf("%w size", ErrInvalidCipherKey)
 		}
 
 		codec.aead, err = aesGCMAEAD(key)
 		if err != nil {
-			return fmt.Errorf("aes-256-gcm: %w", err)
+			return fmt.Errorf("%w: %w", ErrInvalidCipherKey, err)
 		}
 
 		return codec.loadEntry(file, meta)
@@ -65,7 +65,7 @@ func (codec *codec) init(file io.WriterAt, opt Option) (meta *Meta, err error) {
 		blockSize = os.Getpagesize()
 	}
 	if blockSize > 64*1024 || blockSize < 512 {
-		err = fmt.Errorf("%d is %w", blockSize, ErrInvalidBlockSize)
+		err = fmt.Errorf("%w: %d", ErrInvalidBlockSize, blockSize)
 		return
 	}
 	var blockCount uint32 = 2
@@ -103,20 +103,20 @@ func (codec *codec) init(file io.WriterAt, opt Option) (meta *Meta, err error) {
 	case "aes-256-gcm":
 		key := getCipherKey(opt)
 		if len(key) != 32 {
-			err = fmt.Errorf("aes-256-gcm: %w size", ErrInvalidCipherKey)
+			err = fmt.Errorf("%w size", ErrInvalidCipherKey)
 			return
 		}
 
 		codec.aead, err = aesGCMAEAD(key)
 		if err != nil {
-			err = fmt.Errorf("aes-256-gcm: %w", err)
+			err = fmt.Errorf("%w: %w", ErrInvalidCipherKey, err)
 			return
 		}
 
 		codec.spec = binary.AppendVarint(nil, aes_256_gcm)
 		return
 	}
-	err = fmt.Errorf("%w: %s", ErrInvalidCipherSuite, suite)
+	err = fmt.Errorf("%w: %q", ErrInvalidCipherSuite, suite)
 	return
 }
 
@@ -172,7 +172,7 @@ func (c plainAEAD) Open(dst, nonce, ciphertext, additionalData []byte) ([]byte, 
 	if sum == chksum {
 		return nil, nil
 	}
-	return nil, ErrInvalidChecksum
+	return nil, ErrBadChecksum
 }
 
 type crc32AEAD struct{ table *crc32.Table }
@@ -195,7 +195,7 @@ func (c crc32AEAD) Open(dst, nonce, ciphertext, additionalData []byte) ([]byte, 
 	if sum == chksum {
 		return nil, nil
 	}
-	return nil, ErrInvalidChecksum
+	return nil, ErrBadChecksum
 }
 
 func aesGCMAEAD(key []byte) (cipher.AEAD, error) {

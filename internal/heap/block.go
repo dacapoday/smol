@@ -43,7 +43,7 @@ func (block *block[F]) close() (err error) {
 
 func (block *block[F]) extend() (blockID BlockID, err error) {
 	if block.count == 0 {
-		err = ErrOutOfSpace
+		err = ErrNoSpace
 		return
 	}
 	if block.count >= block.limit {

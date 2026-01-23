@@ -18,24 +18,29 @@ func (codec *codec) loadEntry(r io.ReaderAt, meta *Meta) (err error) {
 
 		var head [4]byte
 		if _, err = r.ReadAt(head[:], offset); err != nil {
-			err = fmt.Errorf("read entry(%d) failed: %w", meta.EntryID, err)
+			err = fmt.Errorf("read entry(%d): %w", meta.EntryID, err)
 			return
 		}
 		if head[0] != 0 || head[1] != 0 {
-			return fmt.Errorf("%w entry", ErrInvalidMeta)
+			return fmt.Errorf("%w head", ErrBadEntry)
 		}
 
 		headSize := len(meta.Entry)
-		entry = make([]byte, headSize+int(binary.LittleEndian.Uint16(head[2:4])))
+		size := headSize + int(binary.LittleEndian.Uint16(head[2:4]))
+		if size > int(meta.BlockSize) {
+			return fmt.Errorf("%w size", ErrBadEntry)
+		}
+
+		entry = make([]byte, size)
 		if _, err = r.ReadAt(entry[headSize:], offset+4); err != nil {
-			err = fmt.Errorf("read entry(%d) failed: %w", meta.EntryID, err)
+			err = fmt.Errorf("read entry(%d): %w", meta.EntryID, err)
 			return
 		}
 		copy(entry, meta.Entry)
 	}
 
 	if err = codec.decode(entry, 1); err != nil {
-		return
+		return fmt.Errorf("%w: %w", ErrBadEntry, err)
 	}
 
 	meta.Entry = entry[:len(entry)-codec.size()]
@@ -51,22 +56,26 @@ func loadPlainEntry(r io.ReaderAt, meta *Meta) (err error) {
 
 	var head [4]byte
 	if _, err = r.ReadAt(head[:], offset); err != nil {
-		err = fmt.Errorf("read entry(%d) failed: %w", meta.EntryID, err)
+		err = fmt.Errorf("read entry(%d): %w", meta.EntryID, err)
 		return
 	}
 	if head[0] != 0 || head[1] != 0 {
-		return fmt.Errorf("%w entry", ErrInvalidMeta)
+		return fmt.Errorf("%w head", ErrBadEntry)
 	}
 
 	size := 4 + int(binary.LittleEndian.Uint16(head[2:4]))
+	if size > int(meta.BlockSize) {
+		return fmt.Errorf("%w size", ErrBadEntry)
+	}
+
 	entry := make([]byte, size+max(len(meta.Entry), 4))
 	if _, err = r.ReadAt(entry[:size+4], offset); err != nil {
-		err = fmt.Errorf("read entry(%d) failed: %w", meta.EntryID, err)
+		err = fmt.Errorf("read entry(%d): %w", meta.EntryID, err)
 		return
 	}
 
 	if binary.LittleEndian.Uint32(entry[size:]) != checksum(entry[:size]) {
-		return fmt.Errorf("%w entry checksum", ErrInvalidMeta)
+		return fmt.Errorf("%w checksum", ErrBadEntry)
 	}
 
 	copy(entry[size:], meta.Entry)

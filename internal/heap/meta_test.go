@@ -127,8 +127,8 @@ func TestMetaInvalidChecksum(t *testing.T) {
 
 	var got Meta
 	err := decodeMeta(bytes.NewReader(data), &got)
-	if !errors.Is(err, ErrInvalidMeta) {
-		t.Errorf("expected ErrInvalidMeta, got %v", err)
+	if !errors.Is(err, ErrBadMeta) {
+		t.Errorf("expected ErrBadMeta, got %v", err)
 	}
 }
 
@@ -152,7 +152,7 @@ func TestMetaBufferOverflow(t *testing.T) {
 	buf := make(Buffer, 0, 16) // 容量太小
 
 	err := encodeMeta(&buf, &m)
-	if !errors.Is(err, ErrOutOfRange) {
+	if !errors.Is(err, errOutOfRange) {
 		t.Errorf("expected ErrOutOfRange, got %v", err)
 	}
 }

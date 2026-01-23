@@ -16,7 +16,9 @@ package bptree
 //
 // Note: level[0].BlockID stores the leaf page's block ID, since the root page has
 // no block ID (it's embedded in the tree metadata).
-type Level []struct {
+type Level []level
+
+type level = struct {
 	BlockID BlockID
 	Count   uint16
 	Index   uint16
