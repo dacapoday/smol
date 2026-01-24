@@ -34,11 +34,11 @@ func (reader *Reader[B, R]) Load(block B, root R) {
 	// if len(reader.level) != 0 {
 	// 	reader.block.RecycleBuffer(reader.page)
 	// }
-	if high := root.High(); high == 0 {
-		reader.level = nil
+	high := root.High()
+	reader.level = make(Level, high)
+	if high == 0 {
 		reader.page = root.Page()
 	} else {
-		reader.level = make(Level, high)
 		reader.page = block.AllocateBuffer()
 	}
 	reader.count = 0
@@ -61,7 +61,7 @@ func (dst *Reader[B, R]) LoadFrom(src *Reader[B, R]) {
 		return
 	}
 	if len(src.level) == 0 {
-		dst.level = nil
+		dst.level = Level{}
 		dst.page = src.page
 		return
 	}

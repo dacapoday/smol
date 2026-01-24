@@ -25,30 +25,47 @@ type DBIter = Iter[*os.File]
 
 var _ Iterator[DBIter] = DBIter{}
 
+// Iter is an iterator over a KV store snapshot.
+type Iter[F File] struct {
+	ator *iter[F]
+}
+
+type iter[F File] = struct {
+	ckpt block.HeapCheckpoint
+	bptree.Reader[*block.Heap[F], *Root]
+}
+
 // Iter creates a new iterator over the key-value store.
 // Captures a consistent snapshot at the current moment.
 //
 // Important: Caller must call Close to release resources.
-func (kv *KV[F]) Iter() (iter Iter[F]) {
-	iter.ator = kv.bptree.Iterator()
-	return
-}
-
-// Iter is an iterator over a KV store snapshot.
-// Implements iterator.Iterator interface.
-type Iter[F File] struct {
-	ator *bptree.Iterator[*block.Heap[F], block.HeapCheckpoint]
+func (kv *KV[F]) Iter() Iter[F] {
+	iter := new(iter[F])
+	if root, ckpt := kv.atom.Acquire(); ckpt != nil {
+		iter.ckpt = ckpt
+		iter.Load(kv.atom.Block(), root)
+	}
+	return Iter[F]{iter}
 }
 
 // Clone creates an independent copy at current position.
-func (iter Iter[F]) Clone() (newIter Iter[F]) {
-	newIter.ator = iter.ator.Clone()
-	return
+func (kv Iter[F]) Clone() Iter[F] {
+	iter := new(iter[F])
+	if kv.ator.ckpt != nil {
+		kv.ator.ckpt.Acquire()
+		iter.ckpt = kv.ator.ckpt
+		iter.LoadFrom(&kv.ator.Reader)
+	}
+	return Iter[F]{iter}
 }
 
 // Close releases resources held by the iterator.
 func (iter Iter[F]) Close() {
-	iter.ator.Close()
+	if iter.ator.ckpt != nil {
+		iter.ator.ckpt.Release()
+		iter.ator.ckpt = nil
+		iter.ator.Close()
+	}
 }
 
 // Valid returns true if positioned at a valid item.

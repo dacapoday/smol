@@ -3,7 +3,6 @@ package kv
 import (
 	"bytes"
 
-	"github.com/dacapoday/smol/bptree"
 	"github.com/dacapoday/smol/btree"
 )
 
@@ -13,7 +12,7 @@ import (
 // Writes are serialized. Uncommitted changes are isolated until Commit.
 func (kv *KV[F]) Begin() (tx *Tx[Iter[F]]) {
 	tx = new(Tx[Iter[F]])
-	tx.Begin(kv.Iter(), kv.bptree.CommitSortedChanges)
+	tx.Begin(kv.Iter(), kv.commitSortedChanges)
 	return
 }
 
@@ -59,7 +58,7 @@ func (tx *Tx[Iter]) Rollback() {
 // Transaction is closed after commit (successful or not).
 func (tx *Tx[Iter]) Commit() (err error) {
 	if tx.commit == nil {
-		err = bptree.ErrClosed
+		err = ErrClosed
 		return
 	}
 	if tx.pending.Empty() {

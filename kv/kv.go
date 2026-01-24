@@ -48,10 +48,14 @@ package kv
 import (
 	"os"
 
+	"github.com/dacapoday/smol"
+	"github.com/dacapoday/smol/atom"
 	"github.com/dacapoday/smol/block"
 	"github.com/dacapoday/smol/bptree"
 	"github.com/dacapoday/smol/btree"
 )
+
+var ErrClosed = smol.ErrClosed
 
 // DB is a KV instance using os.File as underlying storage.
 type DB = KV[*os.File]
@@ -79,30 +83,29 @@ type File = block.File
 // Type parameter F must implement File interface (*os.File or *mem.File).
 // Use DB for file-based storage.
 type KV[F File] struct {
-	bptree bptree.BPTree[*block.Heap[F], block.HeapCheckpoint]
-	block  block.Heap[F]
+	atom atom.Embed[block.Heap[F], *block.Heap[F], block.HeapCheckpoint, *Root]
 }
 
 // File returns the underlying file handle.
 func (kv *KV[F]) File() F {
-	return kv.block.File()
+	return kv.atom.Block().File()
 }
 
 // Load initializes the KV store from an existing file.
 // Recovers B+ tree state from the latest checkpoint.
 // Returns error if the file is corrupted or incompatible.
 func (kv *KV[F]) Load(file F) (err error) {
-	entry, ckpt, err := kv.block.Load(file, BlockOption{})
+	entry, ckpt, err := kv.atom.Block().Load(file, BlockOption{})
 	if err != nil {
 		return
 	}
 
-	root, err := bptree.LoadRoot(&kv.block, entry)
+	root, err := loadRoot(kv.atom.Block(), entry)
 	if err != nil {
 		return
 	}
 
-	kv.bptree.Load(&kv.block, ckpt, root)
+	kv.atom.Load(ckpt, root)
 	return
 }
 
@@ -135,20 +138,27 @@ func (o BlockOption) BlockSize() int {
 
 // Close releases all resources and closes the underlying file.
 func (kv *KV[F]) Close() (err error) {
-	return kv.bptree.Close()
+	return kv.atom.Close()
 }
 
 // Get retrieves the value for the given key.
 // Returns nil if key does not exist.
 // Returned value is safe to modify.
 func (kv *KV[F]) Get(key []byte) (val []byte, err error) {
-	return kv.bptree.Get(key)
+	root, ckpt := kv.atom.Acquire()
+	if root == nil {
+		err = ErrClosed
+		return
+	}
+	val, err = bptree.Get(kv.atom.Block(), root, nil, key)
+	ckpt.Release()
+	return
 }
 
 // Set inserts or updates a key-value pair.
 // Pass nil value to delete a key.
 func (kv *KV[F]) Set(key []byte, val []byte) (err error) {
-	return kv.bptree.Set(key, val)
+	return kv.commitSortedChanges(func(yield func([]byte, []byte) bool) { yield(key, val) })
 }
 
 // Batch atomically commits multiple key-value changes.
@@ -160,5 +170,17 @@ func (kv *KV[F]) Batch(changes func(yield func([]byte, []byte) bool)) error {
 	for k, v := range changes {
 		batch.Set(k, v)
 	}
-	return kv.bptree.CommitSortedChanges(batch.Items)
+	return kv.commitSortedChanges(batch.Items)
+}
+
+func (kv *KV[F]) commitSortedChanges(sortedChanges func(func([]byte, []byte) bool)) error {
+	return kv.atom.Swap(func(block *block.Heap[F], root *Root) (entry []byte, newRoot *Root, err error) {
+		high, page, err := bptree.WriteSortedChanges(block, root, sortedChanges)
+		if err != nil {
+			return
+		}
+		entry = page
+		newRoot = &Root{high: high, page: page, klen: root.klen, vlen: root.vlen}
+		return
+	})
 }

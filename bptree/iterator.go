@@ -10,47 +10,6 @@ import (
 	"github.com/dacapoday/smol/overflow"
 )
 
-// Iterator creates a new iterator over the B+ tree.
-// The iterator holds a snapshot and must be closed when done.
-func (bptree *BPTree[B, C]) Iterator() (iter *Iterator[B, C]) {
-	iter = new(Iterator[B, C])
-	if root, ckpt := bptree.atom.Acquire(); root != nil {
-		iter.ckpt = ckpt
-		iter.ator.Load(bptree.atom.Block(), root)
-	}
-	return
-}
-
-// Iterator provides ordered iteration over B+ tree entries with snapshot isolation.
-// It embeds Reader and implements the iterator.Iterator interface.
-type Iterator[B ReadOnly, C Checkpoint] struct {
-	ckpt C
-	ator[B]
-}
-
-type ator[B ReadOnly] = Reader[B, *Root]
-
-// Clone creates an independent copy at current position.
-func (iter *Iterator[B, C]) Clone() (newIter *Iterator[B, C]) {
-	newIter = new(Iterator[B, C])
-	if root := iter.ator.Root(); root != nil {
-		iter.ckpt.Acquire()
-		newIter.ckpt = iter.ckpt
-		newIter.ator.LoadFrom(&iter.ator)
-	}
-	return
-}
-
-// Close releases resources held by the iterator.
-func (iter *Iterator[B, C]) Close() {
-	if root := iter.ator.Root(); root != nil {
-		iter.ckpt.Release()
-		var nilCkpt C
-		iter.ckpt = nilCkpt
-		iter.ator.Close()
-	}
-}
-
 var _ iterator.Iterator = (*Reader[ReadOnly, RootBlock])(nil)
 
 // Valid returns true if positioned at a valid item.

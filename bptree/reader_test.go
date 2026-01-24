@@ -11,6 +11,19 @@ import (
 	"github.com/dacapoday/smol/mem"
 )
 
+// testRoot is a mock root for testing Reader
+type testRoot struct {
+	high uint8
+	page Page
+	klen int
+	vlen int
+}
+
+func (r *testRoot) High() uint8        { return r.high }
+func (r *testRoot) Page() Page         { return r.page }
+func (r *testRoot) KeyInlineSize() int { return r.klen }
+func (r *testRoot) ValInlineSize() int { return r.vlen }
+
 func TestReaderBasic(t *testing.T) {
 	var f mem.File
 	file := &f
@@ -37,7 +50,7 @@ func TestReaderBasic(t *testing.T) {
 		t.Fatalf("writeRoot failed: %v", err)
 	}
 
-	root := &Root{
+	root := &testRoot{
 		high: high,
 		page: rootPage,
 		klen: 1000, // Large enough to avoid overflow
@@ -45,7 +58,7 @@ func TestReaderBasic(t *testing.T) {
 	}
 
 	// Create reader and load
-	var reader Reader[*block.Heap[*mem.File], *Root]
+	var reader Reader[*block.Heap[*mem.File], *testRoot]
 	reader.Load(blk, root)
 	defer reader.Close()
 
@@ -92,7 +105,7 @@ func TestReaderEmptyTree(t *testing.T) {
 	defer blk.Close()
 
 	// Create empty root
-	root := &Root{
+	root := &testRoot{
 		high: 0,
 		page: nil,
 		klen: 1000, // Large enough to avoid overflow
@@ -100,7 +113,7 @@ func TestReaderEmptyTree(t *testing.T) {
 	}
 
 	// Create reader and load
-	var reader Reader[*block.Heap[*mem.File], *Root]
+	var reader Reader[*block.Heap[*mem.File], *testRoot]
 	reader.Load(blk, root)
 	defer reader.Close()
 
