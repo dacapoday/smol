@@ -150,7 +150,7 @@ func (kv *KV[F]) Get(key []byte) (val []byte, err error) {
 		err = ErrClosed
 		return
 	}
-	val, err = bptree.Get(kv.atom.Block(), root, nil, key)
+	val, err = bptree.Get(kv.atom.Block(), root.Page(), root.KeyInlineSize(), root.ValInlineSize(), root.High(), nil, key)
 	ckpt.Release()
 	return
 }
@@ -175,7 +175,7 @@ func (kv *KV[F]) Batch(changes func(yield func([]byte, []byte) bool)) error {
 
 func (kv *KV[F]) commitSortedChanges(sortedChanges func(func([]byte, []byte) bool)) error {
 	return kv.atom.Swap(func(block *block.Heap[F], root *Root) (entry []byte, newRoot *Root, err error) {
-		high, page, err := bptree.WriteSortedChanges(block, root, sortedChanges)
+		high, page, err := bptree.WriteSortedChanges(block, root.Page(), root.KeyInlineSize(), root.ValInlineSize(), root.High(), sortedChanges)
 		if err != nil {
 			return
 		}

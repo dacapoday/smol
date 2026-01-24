@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/dacapoday/smol/block"
 	"github.com/dacapoday/smol/bptree"
 )
 
@@ -15,14 +16,14 @@ type Root struct {
 	high uint8
 }
 
-func loadRoot[B bptree.ReadOnly](block B, entry []byte) (*Root, error) {
+func loadRoot[F File](blk *block.Heap[F], entry []byte) (*Root, error) {
 	root := new(Root)
 	if entrySize := len(entry); entrySize != 0 {
 		page := bptree.Page(entry)
 		if page.Count() == 0 {
 			return nil, fmt.Errorf("entry is %w", bptree.ErrUnsupported)
 		}
-		high, err := bptree.High(block, page)
+		high, err := bptree.High(blk, page)
 		if err != nil {
 			return nil, fmt.Errorf("High: %w", err)
 		}
@@ -30,7 +31,7 @@ func loadRoot[B bptree.ReadOnly](block B, entry []byte) (*Root, error) {
 		root.page = page
 	}
 	{
-		pageSize := block.PageSize()
+		pageSize := blk.PageSize()
 		maxOverflowSize := math.MaxUint32 * pageSize
 		klen, vlen := bptree.InlineSize(pageSize, 5, maxOverflowSize, maxOverflowSize)
 		root.klen = uint16(klen)

@@ -6,39 +6,44 @@ package bptree
 import "github.com/dacapoday/smol/overflow"
 
 // Reader provides cursor-based traversal of B+ tree items.
-type Reader[B ReadOnly, R RootBlock] struct {
-	block    B
-	root     R
-	err      error
-	level    Level
-	page     Page   // buf
-	key, val []byte // buf
-	count    uint16
-	index    uint16
+type Reader[B ReadOnly] struct {
+	block         B
+	root          Page
+	err           error
+	level         Level
+	page          Page   // buf
+	key, val      []byte // buf
+	count         uint16
+	index         uint16
+	keyInlineSize uint16
+	valInlineSize uint16
 }
 
-func (reader *Reader[B, R]) Block() B {
+func (reader *Reader[B]) Block() B {
 	return reader.block
 }
 
-func (reader *Reader[B, R]) Root() R {
-	return reader.root
-}
-
-// Load initializes the reader with block and root.
+// Load initializes the reader with block and root page.
 // Positions reader before the first entry.
-func (reader *Reader[B, R]) Load(block B, root R) {
+func (reader *Reader[B]) Load(block B, root Page, keyInlineSize, valInlineSize int, high uint8) {
 	reader.block = block
 	reader.root = root
+	reader.keyInlineSize = uint16(keyInlineSize)
+	reader.valInlineSize = uint16(valInlineSize)
 	reader.err = exhausted
 	// if len(reader.level) != 0 {
 	// 	reader.block.RecycleBuffer(reader.page)
 	// }
-	high := root.High()
-	reader.level = make(Level, high)
 	if high == 0 {
-		reader.page = root.Page()
+		if root.IsLeaf() {
+			reader.level = Level{}
+			reader.page = root
+		} else {
+			reader.level = nil
+			reader.page = block.AllocateBuffer()
+		}
 	} else {
+		reader.level = make(Level, high)
 		reader.page = block.AllocateBuffer()
 	}
 	reader.count = 0
@@ -47,9 +52,11 @@ func (reader *Reader[B, R]) Load(block B, root R) {
 
 // LoadFrom initializes the reader by copying state from src.
 // Creates independent copy at the same position.
-func (dst *Reader[B, R]) LoadFrom(src *Reader[B, R]) {
+func (dst *Reader[B]) LoadFrom(src *Reader[B]) {
 	dst.block = src.block
 	dst.root = src.root
+	dst.keyInlineSize = src.keyInlineSize
+	dst.valInlineSize = src.valInlineSize
 	dst.err = src.err
 	dst.count = src.count
 	dst.index = src.index
@@ -61,8 +68,13 @@ func (dst *Reader[B, R]) LoadFrom(src *Reader[B, R]) {
 		return
 	}
 	if len(src.level) == 0 {
-		dst.level = Level{}
-		dst.page = src.page
+		if src.level == nil {
+			dst.level = nil
+			dst.page = src.block.AllocateBuffer()
+		} else {
+			dst.level = Level{}
+			dst.page = src.page
+		}
 		return
 	}
 	dst.level = append(Level(nil), src.level...)
@@ -76,32 +88,35 @@ func (dst *Reader[B, R]) LoadFrom(src *Reader[B, R]) {
 }
 
 // Close releases resources and resets the reader.
-func (reader *Reader[B, R]) Close() {
+func (reader *Reader[B]) Close() {
 	if len(reader.level) != 0 {
+		reader.block.RecycleBuffer(reader.page)
+	} else if reader.level == nil && reader.page != nil {
 		reader.block.RecycleBuffer(reader.page)
 	}
 
 	reader.err = nil
 	reader.level = nil
+	reader.root = nil
 	reader.page = nil
 	reader.key = nil
 	reader.val = nil
 	reader.count = 0
 	reader.index = 0
+	reader.keyInlineSize = 0
+	reader.valInlineSize = 0
 
 	var nilBlock B
 	reader.block = nilBlock
-	var nilRoot R
-	reader.root = nilRoot
 }
 
 // Level returns a copy of the current path from root to leaf, representing the
 // cursor position in the tree.
-func (reader *Reader[B, R]) Level() Level {
+func (reader *Reader[B]) Level() Level {
 	return append(Level(nil), reader.level...)
 }
 
-func (reader *Reader[B, R]) next() bool {
+func (reader *Reader[B]) next() bool {
 	reader.index++
 	if reader.index < reader.count {
 		return true
@@ -110,7 +125,7 @@ func (reader *Reader[B, R]) next() bool {
 	return false
 }
 
-func (reader *Reader[B, R]) prev() bool {
+func (reader *Reader[B]) prev() bool {
 	if reader.index == 0 {
 		return false
 	}
@@ -119,17 +134,17 @@ func (reader *Reader[B, R]) prev() bool {
 }
 
 // KeyStr returns the current key as string, or empty if invalid.
-func (reader *Reader[B, R]) KeyStr() string {
+func (reader *Reader[B]) KeyStr() string {
 	return b2s(reader.Key())
 }
 
 // ValStr returns the current value as string, or empty if invalid.
-func (reader *Reader[B, R]) ValStr() string {
+func (reader *Reader[B]) ValStr() string {
 	return b2s(reader.Val())
 }
 
 // InlineKey returns the key bytes stored directly in the page slot.
-func (reader *Reader[B, R]) InlineKey() (key []byte) {
+func (reader *Reader[B]) InlineKey() (key []byte) {
 	if reader.err != null {
 		return
 	}
@@ -138,7 +153,7 @@ func (reader *Reader[B, R]) InlineKey() (key []byte) {
 }
 
 // InlineVal returns the value bytes stored directly in the page slot.
-func (reader *Reader[B, R]) InlineVal() (val []byte) {
+func (reader *Reader[B]) InlineVal() (val []byte) {
 	if reader.err != null {
 		return
 	}
@@ -147,21 +162,21 @@ func (reader *Reader[B, R]) InlineVal() (val []byte) {
 }
 
 // InlineKeyStr returns the inline key as string.
-func (reader *Reader[B, R]) InlineKeyStr() string {
+func (reader *Reader[B]) InlineKeyStr() string {
 	return b2s(reader.InlineKey())
 }
 
 // InlineValStr returns the inline value as string.
-func (reader *Reader[B, R]) InlineValStr() string {
+func (reader *Reader[B]) InlineValStr() string {
 	return b2s(reader.InlineVal())
 }
 
-func (reader *Reader[B, R]) KeyCopy(buf []byte) (key []byte) {
+func (reader *Reader[B]) KeyCopy(buf []byte) (key []byte) {
 	if reader.err != null {
 		return
 	}
 	k := reader.page.LeafKey(reader.index)
-	keyInlineSize := reader.root.KeyInlineSize()
+	keyInlineSize := int(reader.keyInlineSize)
 	if len(k) > keyInlineSize {
 		if len(reader.key) != 0 {
 			key = append(buf[:0], reader.key...)
@@ -181,12 +196,12 @@ func (reader *Reader[B, R]) KeyCopy(buf []byte) (key []byte) {
 	return
 }
 
-func (reader *Reader[B, R]) ValCopy(buf []byte) (val []byte) {
+func (reader *Reader[B]) ValCopy(buf []byte) (val []byte) {
 	if reader.err != null {
 		return
 	}
 	v := reader.page.LeafVal(reader.index)
-	valInlineSize := reader.root.ValInlineSize()
+	valInlineSize := int(reader.valInlineSize)
 	if len(v) > valInlineSize {
 		if len(reader.val) != 0 {
 			val = append(buf[:0], reader.val...)

@@ -3,8 +3,8 @@
 
 package bptree
 
-func (reader *Reader[B, R]) seekFirst() bool {
-	page := reader.root.Page()
+func (reader *Reader[B]) seekFirst() bool {
+	page := reader.root
 	reader.level = Level{{
 		Count: page.Count(),
 		Index: 0,
@@ -35,8 +35,8 @@ func (reader *Reader[B, R]) seekFirst() bool {
 	return true
 }
 
-func (reader *Reader[B, R]) seekLast() bool {
-	page := reader.root.Page()
+func (reader *Reader[B]) seekLast() bool {
+	page := reader.root
 	count := page.Count()
 	index := count - 1
 	reader.level = Level{{
@@ -73,13 +73,13 @@ func (reader *Reader[B, R]) seekLast() bool {
 	return true
 }
 
-func (reader *Reader[B, R]) seek(key []byte) bool {
-	cursor := cursor[B, R]{
+func (reader *Reader[B]) seek(key []byte) bool {
+	cursor := cursor[B]{
 		Reader:        reader,
 		key:           key,
-		keyInlineSize: reader.root.KeyInlineSize(),
+		keyInlineSize: int(reader.keyInlineSize),
 	}
-	page := reader.root.Page()
+	page := reader.root
 	count := page.Count()
 	index := cursor.searchBranch(count, page)
 	if cursor.err != nil {

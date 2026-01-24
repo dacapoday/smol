@@ -53,6 +53,36 @@ func Read[B ReadOnly](block B, buf []byte, head []byte, overflowSize int, overfl
 	}
 }
 
+// Iter returns an iterator over each page's data in the overflow chain.
+// Data is only valid during the yield call.
+func Iter[B ReadOnly](block B, overflowID BlockID) func(yield func([]byte, error) bool) {
+	return func(yield func([]byte, error) bool) {
+		buffer := block.AllocateBuffer()
+		defer block.RecycleBuffer(buffer)
+
+		read := func(buffer []byte) {
+			page := Page(buffer)
+			if page.IsOverflowTail() {
+				yield(page.OverflowTail(), nil)
+				overflowID = 0
+				return
+			}
+			if !yield(page.OverflowBody(), nil) {
+				overflowID = 0
+				return
+			}
+			overflowID = page.OverflowID()
+		}
+
+		for overflowID > 1 {
+			if err := block.ReadBlock(overflowID, buffer, read); err != nil {
+				yield(nil, err)
+				return
+			}
+		}
+	}
+}
+
 // Recycle frees overflow blocks using overflowID.
 func Recycle[B ReadWrite](block B, overflowID BlockID) (err error) {
 	buffer := block.AllocateBuffer()

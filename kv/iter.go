@@ -32,7 +32,7 @@ type Iter[F File] struct {
 
 type iter[F File] = struct {
 	ckpt block.HeapCheckpoint
-	bptree.Reader[*block.Heap[F], *Root]
+	bptree.Reader[*block.Heap[F]]
 }
 
 // Iter creates a new iterator over the key-value store.
@@ -43,7 +43,7 @@ func (kv *KV[F]) Iter() Iter[F] {
 	iter := new(iter[F])
 	if root, ckpt := kv.atom.Acquire(); ckpt != nil {
 		iter.ckpt = ckpt
-		iter.Load(kv.atom.Block(), root)
+		iter.Load(kv.atom.Block(), root.Page(), root.KeyInlineSize(), root.ValInlineSize(), root.High())
 	}
 	return Iter[F]{iter}
 }

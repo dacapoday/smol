@@ -55,6 +55,9 @@ type BlockID = uint32
 type ReadWrite interface {
 	ReadOnly
 
+	// PageSize returns usable bytes within a block.
+	PageSize() int
+
 	// AllocateBlock allocates a new block and returns its BlockID.
 	// Recycle via RecycleBlock when no longer needed.
 	//
@@ -86,15 +89,12 @@ type ReadWrite interface {
 //
 // Important: All buffers from AllocateBuffer or LoadBlock must be recycled via RecycleBuffer.
 type ReadOnly interface {
-	// PageSize returns usable bytes within a block.
-	PageSize() int
-
-	// BufferPressured reports whether the buffer pool is under pressure.
-	// holding: buffers held by current session.
+	// NeedRecycleBuffer reports whether caller should recycle buffers
+	// to relieve memory pressure. holding: buffers held by current session.
 	//
 	// Returns true when pool resources are strained. Callers may continue
 	// allocating but should consider releasing buffers to reduce pressure.
-	BufferPressured(holding int) bool
+	NeedRecycleBuffer(holding int) bool
 
 	// LoadBlock reads a block and returns its content.
 	// Returned buffer is read-only. Recycle via RecycleBuffer.

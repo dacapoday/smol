@@ -10,15 +10,15 @@ import (
 	"github.com/dacapoday/smol/overflow"
 )
 
-var _ iterator.Iterator = (*Reader[ReadOnly, RootBlock])(nil)
+var _ iterator.Iterator = (*Reader[ReadOnly])(nil)
 
 // Valid returns true if positioned at a valid item.
-func (reader *Reader[B, R]) Valid() bool {
+func (reader *Reader[B]) Valid() bool {
 	return reader.err == null
 }
 
 // Error returns any error encountered during iteration.
-func (reader *Reader[B, R]) Error() error {
+func (reader *Reader[B]) Error() error {
 	if reader.err == nil {
 		return ErrClosed
 	}
@@ -31,12 +31,12 @@ func (reader *Reader[B, R]) Error() error {
 // Key returns the current key, or nil if invalid.
 //
 // Warning: Returned slice is valid only until next method call.
-func (reader *Reader[B, R]) Key() (key []byte) {
+func (reader *Reader[B]) Key() (key []byte) {
 	if reader.err != null {
 		return
 	}
 	key = reader.page.LeafKey(reader.index)
-	keyInlineSize := reader.root.KeyInlineSize()
+	keyInlineSize := int(reader.keyInlineSize)
 	if len(key) > keyInlineSize {
 		if len(reader.key) != 0 {
 			key = reader.key
@@ -57,12 +57,12 @@ func (reader *Reader[B, R]) Key() (key []byte) {
 // Val returns the current value, or nil if invalid or deleted.
 //
 // Warning: Returned slice is valid only until next method call.
-func (reader *Reader[B, R]) Val() (val []byte) {
+func (reader *Reader[B]) Val() (val []byte) {
 	if reader.err != null {
 		return
 	}
 	val = reader.page.LeafVal(reader.index)
-	valInlineSize := reader.root.ValInlineSize()
+	valInlineSize := int(reader.valInlineSize)
 	if len(val) > valInlineSize {
 		if len(reader.val) != 0 {
 			val = reader.val
@@ -81,7 +81,7 @@ func (reader *Reader[B, R]) Val() (val []byte) {
 }
 
 // Next advances to the next item.
-func (reader *Reader[B, R]) Next() bool {
+func (reader *Reader[B]) Next() bool {
 	if reader.err != null {
 		return false
 	}
@@ -104,7 +104,7 @@ func (reader *Reader[B, R]) Next() bool {
 	}
 	var blockID BlockID
 	if h == 0 {
-		blockID = reader.root.Page().BranchID(reader.level[0].Index)
+		blockID = reader.root.BranchID(reader.level[0].Index)
 	} else if err := reader.block.ReadBlock(reader.level[h].BlockID, reader.page, func(block []byte) {
 		blockID = Page(block).BranchID(reader.level[h].Index)
 	}); err != nil {
@@ -139,7 +139,7 @@ func (reader *Reader[B, R]) Next() bool {
 }
 
 // Prev moves to the previous item.
-func (reader *Reader[B, R]) Prev() bool {
+func (reader *Reader[B]) Prev() bool {
 	if reader.err != null {
 		return false
 	}
@@ -162,7 +162,7 @@ func (reader *Reader[B, R]) Prev() bool {
 	}
 	var blockID BlockID
 	if h == 0 {
-		blockID = reader.root.Page().BranchID(reader.level[0].Index)
+		blockID = reader.root.BranchID(reader.level[0].Index)
 	} else if err := reader.block.ReadBlock(reader.level[h].BlockID, reader.page, func(block []byte) {
 		blockID = Page(block).BranchID(reader.level[h].Index)
 	}); err != nil {
@@ -198,7 +198,7 @@ func (reader *Reader[B, R]) Prev() bool {
 }
 
 // SeekFirst positions at the first key.
-func (reader *Reader[B, R]) SeekFirst() bool {
+func (reader *Reader[B]) SeekFirst() bool {
 	// if reader.err != null {
 	// 	return false
 	// }
@@ -222,7 +222,7 @@ func (reader *Reader[B, R]) SeekFirst() bool {
 		reader.val = reader.val[:0]
 		return true
 	}
-	page := reader.root.Page()
+	page := reader.root
 	count := page.Count()
 	reader.level[0].Count = count
 	reader.level[0].Index = 0
@@ -257,7 +257,7 @@ func (reader *Reader[B, R]) SeekFirst() bool {
 }
 
 // SeekLast positions at the last key.
-func (reader *Reader[B, R]) SeekLast() bool {
+func (reader *Reader[B]) SeekLast() bool {
 	// if reader.err != null {
 	// 	return false
 	// }
@@ -281,7 +281,7 @@ func (reader *Reader[B, R]) SeekLast() bool {
 		reader.val = reader.val[:0]
 		return true
 	}
-	page := reader.root.Page()
+	page := reader.root
 	count := page.Count()
 	index := count - 1
 	reader.level[0].Count = count
@@ -319,14 +319,14 @@ func (reader *Reader[B, R]) SeekLast() bool {
 }
 
 // Seek positions at the first key >= the given key.
-func (reader *Reader[B, R]) Seek(key []byte) bool {
+func (reader *Reader[B]) Seek(key []byte) bool {
 	// if reader.err != null {
 	// 	return false
 	// }
-	cursor := cursor[B, R]{
+	cursor := cursor[B]{
 		Reader:        reader,
 		key:           key,
-		keyInlineSize: reader.root.KeyInlineSize(),
+		keyInlineSize: int(reader.keyInlineSize),
 	}
 	high := len(reader.level)
 	if high == 0 {
@@ -358,7 +358,7 @@ func (reader *Reader[B, R]) Seek(key []byte) bool {
 		reader.val = reader.val[:0]
 		return true
 	}
-	page := reader.root.Page()
+	page := reader.root
 	count := page.Count()
 	index := cursor.searchBranch(count, page)
 	if cursor.err != nil {
@@ -413,22 +413,22 @@ func (reader *Reader[B, R]) Seek(key []byte) bool {
 }
 
 // cursor should stack-only; no escape
-type cursor[B ReadOnly, R RootBlock] struct {
-	*Reader[B, R]
+type cursor[B ReadOnly] struct {
+	*Reader[B]
 	key           []byte
 	page          Page
 	err           error
 	keyInlineSize int
 }
 
-func (cursor *cursor[B, R]) searchLeaf(count uint16, page Page) (index uint16) {
+func (cursor *cursor[B]) searchLeaf(count uint16, page Page) (index uint16) {
 	cursor.page = page
 	index = search(count, cursor.leaf)
 	// cursor.page = nil
 	return
 }
 
-func (cursor *cursor[B, R]) leaf(i uint16) int {
+func (cursor *cursor[B]) leaf(i uint16) int {
 	leafKey := cursor.page.LeafKey(i)
 	if len(leafKey) > cursor.keyInlineSize {
 		// TODO: compare with overflow head first
@@ -445,14 +445,14 @@ func (cursor *cursor[B, R]) leaf(i uint16) int {
 	return bytes.Compare(cursor.key, leafKey)
 }
 
-func (cursor *cursor[B, R]) searchBranch(count uint16, page Page) (index uint16) {
+func (cursor *cursor[B]) searchBranch(count uint16, page Page) (index uint16) {
 	cursor.page = page
 	index = search(count, cursor.branch)
 	// cursor.page = nil
 	return
 }
 
-func (cursor *cursor[B, R]) branch(i uint16) int {
+func (cursor *cursor[B]) branch(i uint16) int {
 	branchKey := cursor.page.BranchKey(i)
 	if len(branchKey) > cursor.keyInlineSize {
 		// TODO: compare with overflow head first

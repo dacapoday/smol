@@ -90,6 +90,6 @@ func (block *Heap[F]) WriteBlock(blockID BlockID, buffer []byte) (err error) {
 	return block.heap.WriteBlock(blockID, buffer)
 }
 
-func (block *Heap[F]) BufferPressured(holding int) bool {
+func (block *Heap[F]) NeedRecycleBuffer(holding int) bool {
 	return holding > 4096
 }
