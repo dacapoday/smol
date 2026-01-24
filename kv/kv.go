@@ -46,16 +46,15 @@
 package kv
 
 import (
+	"fmt"
+	"math"
 	"os"
 
-	"github.com/dacapoday/smol"
 	"github.com/dacapoday/smol/atom"
 	"github.com/dacapoday/smol/block"
 	"github.com/dacapoday/smol/bptree"
 	"github.com/dacapoday/smol/btree"
 )
-
-var ErrClosed = smol.ErrClosed
 
 // DB is a KV instance using os.File as underlying storage.
 type DB = KV[*os.File]
@@ -83,7 +82,14 @@ type File = block.File
 // Type parameter F must implement File interface (*os.File or *mem.File).
 // Use DB for file-based storage.
 type KV[F File] struct {
-	atom atom.Embed[block.Heap[F], *block.Heap[F], block.HeapCheckpoint, *Root]
+	atom atom.Embed[block.Heap[F], *block.Heap[F], block.HeapCheckpoint, kvroot]
+}
+
+type kvroot = struct {
+	page bptree.Page
+	klen uint16
+	vlen uint16
+	high uint8
 }
 
 // File returns the underlying file handle.
@@ -95,14 +101,33 @@ func (kv *KV[F]) File() F {
 // Recovers B+ tree state from the latest checkpoint.
 // Returns error if the file is corrupted or incompatible.
 func (kv *KV[F]) Load(file F) (err error) {
-	entry, ckpt, err := kv.atom.Block().Load(file, BlockOption{})
+	block := kv.atom.Block()
+	entry, ckpt, err := block.Load(file, BlockOption{})
 	if err != nil {
 		return
 	}
 
-	root, err := loadRoot(kv.atom.Block(), entry)
-	if err != nil {
-		return
+	var root kvroot
+	if entrySize := len(entry); entrySize != 0 {
+		page := bptree.Page(entry)
+		if page.Count() == 0 {
+			err = fmt.Errorf("kv.Load: %w kv entry", ErrUnsupported)
+			return
+		}
+		high, e := bptree.High(block, page)
+		if e != nil {
+			err = fmt.Errorf("kv.Load: %w", e)
+			return
+		}
+		root.high = high
+		root.page = page
+	}
+	{
+		pageSize := block.PageSize()
+		maxOverflowSize := math.MaxUint32 * pageSize
+		klen, vlen := bptree.InlineSize(pageSize, 5, maxOverflowSize, maxOverflowSize)
+		root.klen = uint16(klen)
+		root.vlen = uint16(vlen)
 	}
 
 	kv.atom.Load(ckpt, root)
@@ -146,11 +171,11 @@ func (kv *KV[F]) Close() (err error) {
 // Returned value is safe to modify.
 func (kv *KV[F]) Get(key []byte) (val []byte, err error) {
 	root, ckpt := kv.atom.Acquire()
-	if root == nil {
+	if ckpt == nil {
 		err = ErrClosed
 		return
 	}
-	val, err = bptree.Get(kv.atom.Block(), root.Page(), root.KeyInlineSize(), root.ValInlineSize(), root.High(), nil, key)
+	val, err = bptree.Get(kv.atom.Block(), root.page, int(root.klen), int(root.vlen), root.high, nil, key)
 	ckpt.Release()
 	return
 }
@@ -174,13 +199,16 @@ func (kv *KV[F]) Batch(changes func(yield func([]byte, []byte) bool)) error {
 }
 
 func (kv *KV[F]) commitSortedChanges(sortedChanges func(func([]byte, []byte) bool)) error {
-	return kv.atom.Swap(func(block *block.Heap[F], root *Root) (entry []byte, newRoot *Root, err error) {
-		high, page, err := bptree.WriteSortedChanges(block, root.Page(), root.KeyInlineSize(), root.ValInlineSize(), root.High(), sortedChanges)
+	return kv.atom.Swap(func(block *block.Heap[F], root kvroot) (entry []byte, newRoot kvroot, err error) {
+		high, page, err := bptree.WriteSortedChanges(block,
+			root.page, int(root.klen), int(root.vlen), root.high,
+			sortedChanges)
 		if err != nil {
 			return
 		}
+
 		entry = page
-		newRoot = &Root{high: high, page: page, klen: root.klen, vlen: root.vlen}
+		newRoot = kvroot{high: high, page: page, klen: root.klen, vlen: root.vlen}
 		return
 	})
 }

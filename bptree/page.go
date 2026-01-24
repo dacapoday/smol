@@ -275,11 +275,16 @@ func b2s(b []byte) string {
 // Overflow decodes overflow metadata from data.
 // Format: [head:inlineSize][overflowSize:uvarint][overflowID:4bytes]
 // Returns head (inline portion), overflowSize, and overflowID.
-func Overflow(head []byte, inlineSize int) (front []byte, overflowSize int, overflowID BlockID) {
-	front = head[:inlineSize]
-	size, slen := binary.Uvarint(head[inlineSize:])
+// If len(data) <= inlineSize, returns data as head with zero overflow.
+func Overflow(data []byte, inlineSize int) (head []byte, overflowSize int, overflowID BlockID) {
+	if len(data) <= inlineSize {
+		head = data
+		return
+	}
+	head = data[:inlineSize]
+	size, slen := binary.Uvarint(data[inlineSize:])
 	overflowSize = int(size)
-	overflowID = binary.LittleEndian.Uint32(head[inlineSize+slen:])
+	overflowID = binary.LittleEndian.Uint32(data[inlineSize+slen:])
 	return
 }
 

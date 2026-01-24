@@ -43,7 +43,7 @@ func (kv *KV[F]) Iter() Iter[F] {
 	iter := new(iter[F])
 	if root, ckpt := kv.atom.Acquire(); ckpt != nil {
 		iter.ckpt = ckpt
-		iter.Load(kv.atom.Block(), root.Page(), root.KeyInlineSize(), root.ValInlineSize(), root.High())
+		iter.Load(kv.atom.Block(), root.page, int(root.klen), int(root.vlen), root.high)
 	}
 	return Iter[F]{iter}
 }

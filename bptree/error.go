@@ -12,7 +12,6 @@ import (
 
 var (
 	ErrClosed         = smol.ErrClosed
-	ErrUnsupported    = smol.ErrUnsupported
 	ErrAllocateFailed = smol.ErrAllocateFailed
 )
 

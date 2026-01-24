@@ -429,20 +429,11 @@ func (cursor *cursor[B]) searchLeaf(count uint16, page Page) (index uint16) {
 }
 
 func (cursor *cursor[B]) leaf(i uint16) int {
-	leafKey := cursor.page.LeafKey(i)
-	if len(leafKey) > cursor.keyInlineSize {
-		// TODO: compare with overflow head first
-		if cursor.err != nil {
-			return 0
-		}
-		head, overflowSize, overflowID := Overflow(leafKey, cursor.keyInlineSize)
-		leafKey, cursor.err = overflow.Read(cursor.block, cursor.Reader.key, head, overflowSize, overflowID)
-		if cursor.err != nil {
-			return 0
-		}
-		cursor.Reader.key = leafKey
+	inlineKey := cursor.page.LeafKey(i)
+	if len(inlineKey) <= cursor.keyInlineSize {
+		return bytes.Compare(cursor.key, inlineKey)
 	}
-	return bytes.Compare(cursor.key, leafKey)
+	return cursor.compare(inlineKey)
 }
 
 func (cursor *cursor[B]) searchBranch(count uint16, page Page) (index uint16) {
@@ -453,18 +444,22 @@ func (cursor *cursor[B]) searchBranch(count uint16, page Page) (index uint16) {
 }
 
 func (cursor *cursor[B]) branch(i uint16) int {
-	branchKey := cursor.page.BranchKey(i)
-	if len(branchKey) > cursor.keyInlineSize {
-		// TODO: compare with overflow head first
-		if cursor.err != nil {
-			return 0
-		}
-		head, overflowSize, overflowID := Overflow(branchKey, cursor.keyInlineSize)
-		branchKey, cursor.err = overflow.Read(cursor.block, cursor.Reader.key, head, overflowSize, overflowID)
-		if cursor.err != nil {
-			return 0
-		}
-		cursor.Reader.key = branchKey
+	inlineKey := cursor.page.BranchKey(i)
+	if len(inlineKey) <= cursor.keyInlineSize {
+		return bytes.Compare(cursor.key, inlineKey)
 	}
-	return bytes.Compare(cursor.key, branchKey)
+	return cursor.compare(inlineKey)
+}
+
+func (cursor *cursor[B]) compare(inlineKey []byte) int {
+	if cursor.err != nil {
+		return 0
+	}
+	head, overflowSize, overflowID := Overflow(inlineKey, cursor.keyInlineSize)
+	cmp, err := overflow.Compare(cursor.block, cursor.key, head, overflowSize, overflowID)
+	if err != nil {
+		cursor.err = err
+		return 0
+	}
+	return cmp
 }

@@ -10,14 +10,17 @@ func (reader *Reader[B]) seekFirst() bool {
 		Index: 0,
 	}}
 	blockID := page.BranchID(0)
-	page = reader.page
-	for {
-		reader.err = reader.block.ReadBlock(blockID, page, nil)
-		if reader.err != nil {
-			return false
-		}
+	seekFirst := func(block []byte) {
+		page := Page(block)
 		if page.IsLeaf() {
-			break
+			if &page[0] != &reader.page[0] {
+				copy(reader.page, page)
+			}
+			reader.count = page.Count()
+			reader.index = 0
+			reader.level[0].BlockID = blockID
+			blockID = 0
+			return
 		}
 		reader.level = append(reader.level, level{
 			BlockID: blockID,
@@ -26,9 +29,13 @@ func (reader *Reader[B]) seekFirst() bool {
 		})
 		blockID = page.BranchID(0)
 	}
-	reader.level[0].BlockID = blockID
-	reader.count = page.Count()
-	reader.index = 0
+	page = reader.page
+	for blockID > 1 {
+		reader.err = reader.block.ReadBlock(blockID, page, seekFirst)
+		if reader.err != nil {
+			return false
+		}
+	}
 	reader.err = null
 	reader.key = reader.key[:0]
 	reader.val = reader.val[:0]
@@ -44,17 +51,20 @@ func (reader *Reader[B]) seekLast() bool {
 		Index: index,
 	}}
 	blockID := page.BranchID(index)
-	page = reader.page
-	for {
-		reader.err = reader.block.ReadBlock(blockID, page, nil)
-		if reader.err != nil {
-			return false
-		}
+	seekLast := func(block []byte) {
+		page := Page(block)
+		count := page.Count()
+		index := count - 1
 		if page.IsLeaf() {
-			break
+			if &page[0] != &reader.page[0] {
+				copy(reader.page, page)
+			}
+			reader.count = count
+			reader.index = index
+			reader.level[0].BlockID = blockID
+			blockID = 0
+			return
 		}
-		count = page.Count()
-		index = count - 1
 		reader.level = append(reader.level, level{
 			BlockID: blockID,
 			Count:   count,
@@ -62,11 +72,13 @@ func (reader *Reader[B]) seekLast() bool {
 		})
 		blockID = page.BranchID(index)
 	}
-	count = page.Count()
-	index = count - 1
-	reader.level[0].BlockID = blockID
-	reader.count = count
-	reader.index = index
+	page = reader.page
+	for blockID > 1 {
+		reader.err = reader.block.ReadBlock(blockID, page, seekLast)
+		if reader.err != nil {
+			return false
+		}
+	}
 	reader.err = null
 	reader.key = reader.key[:0]
 	reader.val = reader.val[:0]
@@ -95,21 +107,21 @@ func (reader *Reader[B]) seek(key []byte) bool {
 		Index: index,
 	}}
 	blockID := page.BranchID(index)
-	page = reader.page
-	for {
-		reader.err = reader.block.ReadBlock(blockID, page, nil)
-		if reader.err != nil {
-			return false
-		}
+	seek := func(block []byte) {
+		page := Page(block)
+		count := page.Count()
 		if page.IsLeaf() {
-			break
+			if &page[0] != &reader.page[0] {
+				copy(reader.page, page)
+			}
+			index := cursor.searchLeaf(count-1, page)
+			reader.count = count
+			reader.index = index
+			reader.level[0].BlockID = blockID
+			blockID = 0
+			return
 		}
-		count = page.Count()
-		index = cursor.searchBranch(count-1, page)
-		if cursor.err != nil {
-			reader.err = cursor.err
-			return false
-		}
+		index := cursor.searchBranch(count-1, page)
 		reader.level = append(reader.level, level{
 			BlockID: blockID,
 			Count:   count,
@@ -117,15 +129,17 @@ func (reader *Reader[B]) seek(key []byte) bool {
 		})
 		blockID = page.BranchID(index)
 	}
-	count = page.Count()
-	index = cursor.searchLeaf(count-1, page)
-	if cursor.err != nil {
-		reader.err = cursor.err
-		return false
+	page = reader.page
+	for blockID > 1 {
+		reader.err = reader.block.ReadBlock(blockID, page, seek)
+		if reader.err != nil {
+			return false
+		}
+		if cursor.err != nil {
+			reader.err = cursor.err
+			return false
+		}
 	}
-	reader.level[0].BlockID = blockID
-	reader.count = count
-	reader.index = index
 	reader.err = null
 	reader.key = reader.key[:0]
 	reader.val = reader.val[:0]

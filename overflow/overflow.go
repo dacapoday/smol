@@ -3,75 +3,101 @@
 package overflow
 
 import (
+	"bytes"
 	"encoding/binary"
 )
 
 // Read reads complete data from block using head.
-// Reuses buf if it has enough capacity; otherwise allocates new buffer.
-// Returns complete data in body.
-func Read[B ReadOnly](block B, buf []byte, head []byte, overflowSize int, overflowID BlockID) (body []byte, err error) {
-	if overflowID < 2 {
-		err = ErrBadOverflow
+// Reuses buffer if capacity suffices; otherwise allocates.
+func Read[B ReadOnly](block B, buffer []byte, head []byte, overflowSize int, overflowID BlockID) (body []byte, err error) {
+	if size := len(head) + overflowSize; cap(buffer) < size {
+		buffer = make([]byte, 0, size)
+	}
+	buffer = append(buffer[:0], head...)
+
+	var chunk []byte
+	for chunk, err = range Iter(block, overflowSize, overflowID) {
+		if err != nil {
+			return
+		}
+		buffer = append(buffer, chunk...)
+	}
+	body = buffer
+	return
+}
+
+// Compare compares key with overflow data (head + overflow chain).
+// Returns -1 (key < data), 0 (key == data), 1 (key > data).
+func Compare[B ReadOnly](block B, key, head []byte, overflowSize int, overflowID BlockID) (cmp int, err error) {
+	// compare head prefix
+	n := min(len(key), len(head))
+	if cmp = bytes.Compare(key[:n], head[:n]); cmp != 0 {
 		return
 	}
 
-	if size := len(head) + overflowSize; cap(buf) < size {
-		buf = make([]byte, 0, size)
-	} else {
-		buf = buf[:0]
-	}
-	buf = append(buf, head...)
-
-	buffer := block.AllocateBuffer()
-	defer block.RecycleBuffer(buffer)
-
-	read := func(block []byte) {
-		page := Page(block)
-		if page.IsOverflowTail() {
-			body = append(buf, page.OverflowTail()...)
-			overflowID = 0
-			return
+	// key within head
+	size := len(head) + overflowSize
+	if len(key) <= len(head) {
+		if len(key) < size {
+			cmp = -1
 		}
-		buf = append(buf, page.OverflowBody()...)
-		overflowID = page.OverflowID()
-		if overflowID < 2 {
-			overflowID = 1
-			return
-		}
+		return
 	}
 
-	for {
-		if err = block.ReadBlock(overflowID, buffer, read); err != nil {
+	// compare overflow
+	offset := len(head)
+	var chunk []byte
+	for chunk, err = range Iter(block, overflowSize, overflowID) {
+		if err != nil {
 			return
 		}
-		if overflowID < 2 {
-			if overflowID == 1 {
-				err = ErrBadOverflow
-			}
+		remaining := len(key) - offset
+		n := min(remaining, len(chunk))
+		if cmp = bytes.Compare(key[offset:offset+n], chunk[:n]); cmp != 0 {
 			return
 		}
+		if remaining < len(chunk) {
+			cmp = -1
+			return
+		}
+		offset += len(chunk)
 	}
+
+	if len(key) > size {
+		cmp = 1
+	}
+	return
 }
 
 // Iter returns an iterator over each page's data in the overflow chain.
 // Data is only valid during the yield call.
-func Iter[B ReadOnly](block B, overflowID BlockID) func(yield func([]byte, error) bool) {
+// Reports ErrBadOverflow if data size doesn't match overflowSize.
+func Iter[B ReadOnly](block B, overflowSize int, overflowID BlockID) func(yield func([]byte, error) bool) {
 	return func(yield func([]byte, error) bool) {
 		buffer := block.AllocateBuffer()
 		defer block.RecycleBuffer(buffer)
 
 		read := func(buffer []byte) {
 			page := Page(buffer)
+			var data []byte
 			if page.IsOverflowTail() {
-				yield(page.OverflowTail(), nil)
+				data = page.OverflowTail()
 				overflowID = 0
+			} else {
+				data = page.OverflowBody()
+				overflowID = page.OverflowID()
+			}
+			overflowSize -= len(data)
+			if overflowSize < 0 {
+				yield(nil, errOverflow(overflowSize))
+				overflowID = 0
+				overflowSize = 0
 				return
 			}
-			if !yield(page.OverflowBody(), nil) {
+			if !yield(data, nil) {
 				overflowID = 0
-				return
+				overflowSize = 0
 			}
-			overflowID = page.OverflowID()
 		}
 
 		for overflowID > 1 {
@@ -79,6 +105,10 @@ func Iter[B ReadOnly](block B, overflowID BlockID) func(yield func([]byte, error
 				yield(nil, err)
 				return
 			}
+		}
+
+		if overflowSize != 0 {
+			yield(nil, errOverflow(overflowSize))
 		}
 	}
 }
@@ -98,7 +128,7 @@ func Recycle[B ReadWrite](block B, overflowID BlockID) (err error) {
 
 		nextID = page.OverflowID()
 		if nextID < 2 {
-			err = ErrBadOverflow
+			err = errNextID(nextID)
 		}
 	}
 
