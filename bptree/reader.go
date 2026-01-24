@@ -12,7 +12,7 @@ type Reader[B ReadOnly] struct {
 	err           error
 	level         Level
 	page          Page   // buf
-	key, val      []byte // buf
+	val           []byte // buf
 	count         uint16
 	index         uint16
 	keyInlineSize uint16
@@ -60,7 +60,6 @@ func (dst *Reader[B]) LoadFrom(src *Reader[B]) {
 	dst.err = src.err
 	dst.count = src.count
 	dst.index = src.index
-	dst.key = nil
 	dst.val = nil
 	if dst.err == nil {
 		dst.level = nil
@@ -99,7 +98,6 @@ func (reader *Reader[B]) Close() {
 	reader.level = nil
 	reader.root = nil
 	reader.page = nil
-	reader.key = nil
 	reader.val = nil
 	reader.count = 0
 	reader.index = 0
@@ -178,10 +176,6 @@ func (reader *Reader[B]) KeyCopy(buf []byte) (key []byte) {
 	k := reader.page.LeafKey(reader.index)
 	keyInlineSize := int(reader.keyInlineSize)
 	if len(k) > keyInlineSize {
-		if len(reader.key) != 0 {
-			key = append(buf[:0], reader.key...)
-			return
-		}
 		head, overflowSize, overflowID := Overflow(k, keyInlineSize)
 		var err error
 		key, err = overflow.Read(reader.block, buf, head, overflowSize, overflowID)

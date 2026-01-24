@@ -82,7 +82,7 @@ type File = block.File
 // Type parameter F must implement File interface (*os.File or *mem.File).
 // Use DB for file-based storage.
 type KV[F File] struct {
-	atom atom.Embed[block.Heap[F], *block.Heap[F], block.HeapCheckpoint, kvroot]
+	atom atom.Own[block.Heap[F], *block.Heap[F], block.HeapCheckpoint, kvroot]
 }
 
 type kvroot = struct {

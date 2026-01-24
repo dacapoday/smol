@@ -37,7 +37,6 @@ func (reader *Reader[B]) seekFirst() bool {
 		}
 	}
 	reader.err = null
-	reader.key = reader.key[:0]
 	reader.val = reader.val[:0]
 	return true
 }
@@ -80,7 +79,6 @@ func (reader *Reader[B]) seekLast() bool {
 		}
 	}
 	reader.err = null
-	reader.key = reader.key[:0]
 	reader.val = reader.val[:0]
 	return true
 }
@@ -141,7 +139,6 @@ func (reader *Reader[B]) seek(key []byte) bool {
 		}
 	}
 	reader.err = null
-	reader.key = reader.key[:0]
 	reader.val = reader.val[:0]
 	return true
 }

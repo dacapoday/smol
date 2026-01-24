@@ -38,18 +38,12 @@ func (reader *Reader[B]) Key() (key []byte) {
 	key = reader.page.LeafKey(reader.index)
 	keyInlineSize := int(reader.keyInlineSize)
 	if len(key) > keyInlineSize {
-		if len(reader.key) != 0 {
-			key = reader.key
-			return
-		}
 		head, overflowSize, overflowID := Overflow(key, keyInlineSize)
 		var err error
-		key, err = overflow.Read(reader.block, reader.key, head, overflowSize, overflowID)
+		key, err = overflow.Read(reader.block, nil, head, overflowSize, overflowID)
 		if err != nil {
 			reader.err = err
-			return
 		}
-		reader.key = key
 	}
 	return
 }
@@ -86,7 +80,6 @@ func (reader *Reader[B]) Next() bool {
 		return false
 	}
 	if reader.next() {
-		reader.key = reader.key[:0]
 		reader.val = reader.val[:0]
 		return true
 	}
@@ -133,7 +126,6 @@ func (reader *Reader[B]) Next() bool {
 	reader.level[0].BlockID = blockID
 	reader.count = count
 	reader.index = 0
-	reader.key = reader.key[:0]
 	reader.val = reader.val[:0]
 	return true
 }
@@ -144,7 +136,6 @@ func (reader *Reader[B]) Prev() bool {
 		return false
 	}
 	if reader.prev() {
-		reader.key = reader.key[:0]
 		reader.val = reader.val[:0]
 		return true
 	}
@@ -192,7 +183,6 @@ func (reader *Reader[B]) Prev() bool {
 	reader.level[0].BlockID = blockID
 	reader.count = count
 	reader.index = count - 1
-	reader.key = reader.key[:0]
 	reader.val = reader.val[:0]
 	return true
 }
@@ -218,7 +208,6 @@ func (reader *Reader[B]) SeekFirst() bool {
 		reader.count = count
 		reader.index = 0
 		reader.err = null
-		reader.key = reader.key[:0]
 		reader.val = reader.val[:0]
 		return true
 	}
@@ -251,7 +240,6 @@ func (reader *Reader[B]) SeekFirst() bool {
 	reader.count = count
 	reader.index = 0
 	reader.err = null
-	reader.key = reader.key[:0]
 	reader.val = reader.val[:0]
 	return true
 }
@@ -277,7 +265,6 @@ func (reader *Reader[B]) SeekLast() bool {
 		reader.count = count
 		reader.index = count - 1
 		reader.err = null
-		reader.key = reader.key[:0]
 		reader.val = reader.val[:0]
 		return true
 	}
@@ -313,7 +300,6 @@ func (reader *Reader[B]) SeekLast() bool {
 	reader.count = count
 	reader.index = index
 	reader.err = null
-	reader.key = reader.key[:0]
 	reader.val = reader.val[:0]
 	return true
 }
@@ -354,7 +340,6 @@ func (reader *Reader[B]) Seek(key []byte) bool {
 		reader.count = count
 		reader.index = index
 		reader.err = null
-		reader.key = reader.key[:0]
 		reader.val = reader.val[:0]
 		return true
 	}
@@ -407,7 +392,6 @@ func (reader *Reader[B]) Seek(key []byte) bool {
 	reader.count = count
 	reader.index = index
 	reader.err = null
-	reader.key = reader.key[:0]
 	reader.val = reader.val[:0]
 	return true
 }
