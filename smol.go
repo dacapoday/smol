@@ -89,13 +89,6 @@ type ReadWrite interface {
 //
 // Important: All buffers from AllocateBuffer or LoadBlock must be recycled via RecycleBuffer.
 type ReadOnly interface {
-	// NeedRecycleBuffer reports whether caller should recycle buffers
-	// to relieve memory pressure. holding: buffers held by current session.
-	//
-	// Returns true when pool resources are strained. Callers may continue
-	// allocating but should consider releasing buffers to reduce pressure.
-	NeedRecycleBuffer(holding int) bool
-
 	// LoadBlock reads a block and returns its content.
 	// Returned buffer is read-only. Recycle via RecycleBuffer.
 	LoadBlock(blockID BlockID) (buffer []byte, err error)
@@ -109,6 +102,13 @@ type ReadOnly interface {
 	//
 	// Important: Buffer parameter is required even when reader is provided.
 	ReadBlock(blockID BlockID, buffer []byte, reader func(block []byte)) error
+
+	// NeedRecycleBuffer reports whether caller should recycle buffers
+	// to relieve memory pressure. holding: buffers held by current session.
+	//
+	// Returns true when pool resources are strained. Callers may continue
+	// allocating but should consider releasing buffers to reduce pressure.
+	NeedRecycleBuffer(holding int) bool
 
 	// RecycleBuffer releases a buffer from AllocateBuffer or LoadBlock.
 	//

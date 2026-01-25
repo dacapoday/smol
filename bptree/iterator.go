@@ -4,8 +4,6 @@
 package bptree
 
 import (
-	"bytes"
-
 	"github.com/dacapoday/smol/iterator"
 	"github.com/dacapoday/smol/overflow"
 )
@@ -394,56 +392,4 @@ func (reader *Reader[B]) Seek(key []byte) bool {
 	reader.err = null
 	reader.val = reader.val[:0]
 	return true
-}
-
-// cursor should stack-only; no escape
-type cursor[B ReadOnly] struct {
-	*Reader[B]
-	key           []byte
-	page          Page
-	err           error
-	keyInlineSize int
-}
-
-func (cursor *cursor[B]) searchLeaf(count uint16, page Page) (index uint16) {
-	cursor.page = page
-	index = search(count, cursor.leaf)
-	// cursor.page = nil
-	return
-}
-
-func (cursor *cursor[B]) leaf(i uint16) int {
-	inlineKey := cursor.page.LeafKey(i)
-	if len(inlineKey) <= cursor.keyInlineSize {
-		return bytes.Compare(cursor.key, inlineKey)
-	}
-	return cursor.compare(inlineKey)
-}
-
-func (cursor *cursor[B]) searchBranch(count uint16, page Page) (index uint16) {
-	cursor.page = page
-	index = search(count, cursor.branch)
-	// cursor.page = nil
-	return
-}
-
-func (cursor *cursor[B]) branch(i uint16) int {
-	inlineKey := cursor.page.BranchKey(i)
-	if len(inlineKey) <= cursor.keyInlineSize {
-		return bytes.Compare(cursor.key, inlineKey)
-	}
-	return cursor.compare(inlineKey)
-}
-
-func (cursor *cursor[B]) compare(inlineKey []byte) int {
-	if cursor.err != nil {
-		return 0
-	}
-	head, overflowSize, overflowID := Overflow(inlineKey, cursor.keyInlineSize)
-	cmp, err := overflow.Compare(cursor.block, cursor.key, head, overflowSize, overflowID)
-	if err != nil {
-		cursor.err = err
-		return 0
-	}
-	return cmp
 }

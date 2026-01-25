@@ -5,8 +5,6 @@
 package block
 
 import (
-	"hash/crc32"
-
 	"github.com/dacapoday/smol"
 	"github.com/dacapoday/smol/internal/heap"
 )
@@ -20,12 +18,6 @@ type HeapOption interface {
 	ReadOnly() bool
 	IgnoreInvalidFreelist() bool
 	RetainCheckpoints() uint8
-}
-
-var castagnoliCrcTable = crc32.MakeTable(crc32.Castagnoli)
-
-func checksum(data []byte) uint32 {
-	return crc32.Checksum(data, castagnoliCrcTable)
 }
 
 var _ smol.Block[HeapCheckpoint] = (*Heap[File])(nil)

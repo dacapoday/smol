@@ -3,7 +3,11 @@
 
 package bptree
 
-import "github.com/dacapoday/smol/overflow"
+import (
+	"bytes"
+
+	"github.com/dacapoday/smol/overflow"
+)
 
 // Reader provides cursor-based traversal of B+ tree items.
 type Reader[B ReadOnly] struct {
@@ -129,6 +133,27 @@ func (reader *Reader[B]) prev() bool {
 	}
 	reader.index--
 	return true
+}
+
+func (reader *Reader[B]) Equal(key []byte) bool {
+	if reader.err != null {
+		return false
+	}
+
+	currentKey := reader.page.LeafKey(reader.index)
+	keyInlineSize := int(reader.keyInlineSize)
+	if len(currentKey) <= keyInlineSize {
+		return bytes.Equal(key, currentKey)
+	}
+
+	head, overflowSize, overflowID := Overflow(currentKey, keyInlineSize)
+	cmp, err := overflow.Compare(reader.block, key, head, overflowSize, overflowID)
+	if err != nil {
+		reader.err = err
+		return false
+	}
+
+	return cmp == 0
 }
 
 // KeyStr returns the current key as string, or empty if invalid.
