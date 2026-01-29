@@ -29,10 +29,10 @@ type Checkpoint = interface {
 //
 // Zero value is closed. Call Load to initialize.
 type Atom[V any, C Checkpoint] struct {
-	val   V
-	ckpt  C
-	view  sync.RWMutex
 	mutex sync.Mutex
+	view  sync.RWMutex
+	ckpt  C
+	val   V
 }
 
 // Load initializes Atom with value and checkpoint.
