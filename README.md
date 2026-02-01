@@ -95,3 +95,9 @@ if err != nil {
 Database file format visualized with Kaitai Struct IDE:
 
 ![Kaitai Struct IDE Screenshot](doc/ksy_ide_screen.png)
+
+## Sponsors
+
+Development supported by [exe.dev](https://exe.dev) — cloud development environments with AI support.
+
+Invitation code: [call-44-pop-rsi-add-rsi-0xf453b9](https://exe.dev/auth?invite=call-44-pop-rsi-add-rsi-0xf453b9)
